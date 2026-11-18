@@ -1,7 +1,7 @@
 import unittest
 
-from odin.config import Config
-from odin.router import route
+from akki.config import Config
+from akki.router import route
 
 
 class RouterTests(unittest.TestCase):
@@ -69,6 +69,19 @@ class RouterTests(unittest.TestCase):
         request = route(r"open C:\Users\ankit\Desktop", self.config)
         self.assertIsNotNone(request)
         self.assertEqual(request.tool, "open_path")
+
+    def test_read_url(self) -> None:
+        request = route("read https://example.com/docs", self.config)
+        self.assertIsNotNone(request)
+        self.assertEqual(request.tool, "read_url")
+
+    def test_windows_tools(self) -> None:
+        self.assertEqual(route("lock the computer", self.config).tool, "lock_screen")
+        self.assertEqual(route("clipboard", self.config).tool, "clipboard_read")
+        request = route("clipboard write hello world", self.config)
+        self.assertIsNotNone(request)
+        self.assertEqual(request.tool, "clipboard_write")
+        self.assertEqual(request.args["text"], "hello world")
 
     def test_unknown_request(self) -> None:
         self.assertIsNone(route("what is the weather tomorrow", self.config))

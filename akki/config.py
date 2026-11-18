@@ -44,7 +44,7 @@ class LLMSettings:
     cache_ttl_seconds: float = 3600.0
     enabled: bool = True
     local_enabled: bool = True
-    local_first: bool = True
+    local_first: bool = False
     local_model: str = "richardyoung/fable-qwen2.5-3b-abliterated"
     local_base_url: str = "http://127.0.0.1:11434/v1"
     local_timeout_seconds: float = 60.0
@@ -97,12 +97,20 @@ class VoiceSettings:
     auto_speak: bool = False
     rate: int = 1
     volume: int = 100
+    tts_pitch: int = 0
     voice_name: str = ""
     stt_model: str = "small"
     stt_language: str = "auto"
     hotkey: str = "ctrl+space"
     hotkey_enabled: bool = False
+    wake_word: str = "hey akki"
+    wake_enabled: bool = True
+    conversation_mode: bool = False
     tts_engine: str = "piper"
+    edge_voice: str = "en-IN-PrabhatNeural"
+    nsfw_edge_voice: str = "en-IN-NeerjaExpressiveNeural"
+    hindi_edge_voice: str = "hi-IN-MadhurNeural"
+    nsfw_hindi_edge_voice: str = "hi-IN-SwaraNeural"
     piper_voice: str = "en_US-lessac-medium"
     piper_speaker: int | None = None
     piper_length_scale: float = 1.0
@@ -112,12 +120,20 @@ class VoiceSettings:
             "auto_speak": self.auto_speak,
             "rate": self.rate,
             "volume": self.volume,
+            "tts_pitch": self.tts_pitch,
             "voice_name": self.voice_name,
             "stt_model": self.stt_model,
             "stt_language": self.stt_language,
             "hotkey": self.hotkey,
             "hotkey_enabled": self.hotkey_enabled,
+            "wake_word": self.wake_word,
+            "wake_enabled": self.wake_enabled,
+            "conversation_mode": self.conversation_mode,
             "tts_engine": self.tts_engine,
+            "edge_voice": self.edge_voice,
+            "nsfw_edge_voice": self.nsfw_edge_voice,
+            "hindi_edge_voice": self.hindi_edge_voice,
+            "nsfw_hindi_edge_voice": self.nsfw_hindi_edge_voice,
             "piper_voice": self.piper_voice,
             "piper_speaker": self.piper_speaker,
             "piper_length_scale": self.piper_length_scale,
@@ -131,12 +147,30 @@ class VoiceSettings:
             auto_speak=bool(data.get("auto_speak", base.auto_speak)),
             rate=int(data.get("rate", base.rate)),
             volume=int(data.get("volume", base.volume)),
+            tts_pitch=int(data.get("tts_pitch", base.tts_pitch)),
             voice_name=str(data.get("voice_name", base.voice_name)),
             stt_model=str(data.get("stt_model", base.stt_model)),
             stt_language=str(data.get("stt_language", base.stt_language)),
             hotkey=str(data.get("hotkey", base.hotkey)),
             hotkey_enabled=bool(data.get("hotkey_enabled", base.hotkey_enabled)),
+            wake_word=str(data.get("wake_word", base.wake_word)),
+            wake_enabled=bool(data.get("wake_enabled", base.wake_enabled)),
+            conversation_mode=bool(
+                data.get("conversation_mode", base.conversation_mode)
+            ),
             tts_engine=str(data.get("tts_engine", base.tts_engine)),
+            edge_voice=str(data.get("edge_voice", base.edge_voice)),
+            nsfw_edge_voice=str(
+                data.get("nsfw_edge_voice", base.nsfw_edge_voice)
+            ),
+            hindi_edge_voice=str(
+                data.get("hindi_edge_voice", base.hindi_edge_voice)
+            ),
+            nsfw_hindi_edge_voice=str(
+                data.get(
+                    "nsfw_hindi_edge_voice", base.nsfw_hindi_edge_voice
+                )
+            ),
             piper_voice=str(data.get("piper_voice", base.piper_voice)),
             piper_speaker=None if speaker is None else int(speaker),
             piper_length_scale=float(
@@ -146,11 +180,142 @@ class VoiceSettings:
 
 
 @dataclass(slots=True)
+class WebSettings:
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8765
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"enabled": self.enabled, "host": self.host, "port": self.port}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WebSettings":
+        base = cls()
+        return cls(
+            enabled=bool(data.get("enabled", base.enabled)),
+            host=str(data.get("host", base.host)),
+            port=int(data.get("port", base.port)),
+        )
+
+
+@dataclass(slots=True)
+class AlertSettings:
+    enabled: bool = False
+    ntfy_server: str = "https://ntfy.sh"
+    ntfy_topic: str = ""
+    ntfy_token_env: str = "AKKI_NTFY_TOKEN"
+    imap_host: str = ""
+    imap_port: int = 993
+    imap_user: str = ""
+    imap_password_env: str = "AKKI_IMAP_PASSWORD"
+    imap_folder: str = "INBOX"
+    poll_seconds: float = 300.0
+    importance_threshold: float = 0.65
+    max_messages: int = 10
+    timeout_seconds: float = 20.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "ntfy_server": self.ntfy_server,
+            "ntfy_topic": self.ntfy_topic,
+            "ntfy_token_env": self.ntfy_token_env,
+            "imap_host": self.imap_host,
+            "imap_port": self.imap_port,
+            "imap_user": self.imap_user,
+            "imap_password_env": self.imap_password_env,
+            "imap_folder": self.imap_folder,
+            "poll_seconds": self.poll_seconds,
+            "importance_threshold": self.importance_threshold,
+            "max_messages": self.max_messages,
+            "timeout_seconds": self.timeout_seconds,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AlertSettings":
+        base = cls()
+        return cls(
+            enabled=bool(data.get("enabled", base.enabled)),
+            ntfy_server=str(data.get("ntfy_server", base.ntfy_server)),
+            ntfy_topic=str(data.get("ntfy_topic", base.ntfy_topic)),
+            ntfy_token_env=str(data.get("ntfy_token_env", base.ntfy_token_env)),
+            imap_host=str(data.get("imap_host", base.imap_host)),
+            imap_port=int(data.get("imap_port", base.imap_port)),
+            imap_user=str(data.get("imap_user", base.imap_user)),
+            imap_password_env=str(
+                data.get("imap_password_env", base.imap_password_env)
+            ),
+            imap_folder=str(data.get("imap_folder", base.imap_folder)),
+            poll_seconds=float(data.get("poll_seconds", base.poll_seconds)),
+            importance_threshold=float(
+                data.get("importance_threshold", base.importance_threshold)
+            ),
+            max_messages=int(data.get("max_messages", base.max_messages)),
+            timeout_seconds=float(data.get("timeout_seconds", base.timeout_seconds)),
+        )
+
+
+@dataclass(slots=True)
+class DesktopSettings:
+    tray_enabled: bool = False
+    widget_enabled: bool = False
+    bubble_enabled: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tray_enabled": self.tray_enabled,
+            "widget_enabled": self.widget_enabled,
+            "bubble_enabled": self.bubble_enabled,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DesktopSettings":
+        base = cls()
+        return cls(
+            tray_enabled=bool(data.get("tray_enabled", base.tray_enabled)),
+            widget_enabled=bool(
+                data.get("widget_enabled", base.widget_enabled)
+            ),
+            bubble_enabled=bool(data.get("bubble_enabled", base.bubble_enabled)),
+        )
+
+
+@dataclass(slots=True)
+class MCPServerSettings:
+    command: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+    enabled: bool = True
+    timeout_seconds: float = 15.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "command": self.command,
+            "env": self.env,
+            "enabled": self.enabled,
+            "timeout_seconds": self.timeout_seconds,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MCPServerSettings":
+        base = cls()
+        command = data.get("command", base.command)
+        if isinstance(command, str):
+            command = [command]
+        env = data.get("env", base.env)
+        return cls(
+            command=[str(item) for item in command],
+            env={str(key): str(value) for key, value in env.items()},
+            enabled=bool(data.get("enabled", base.enabled)),
+            timeout_seconds=float(data.get("timeout_seconds", base.timeout_seconds)),
+        )
+
+
+@dataclass(slots=True)
 class Config:
     profile: str = "sovereign"
     apps: dict[str, AppEntry] = field(default_factory=dict)
     search_roots: list[Path] = field(default_factory=list)
-    screenshot_dir: Path = field(default_factory=lambda: Path.home() / "Pictures" / "ODIN")
+    screenshot_dir: Path = field(default_factory=lambda: Path.home() / "Pictures" / "AKKI")
     db_path: Path = field(default_factory=lambda: database_path())
     search_engine: str = "duckduckgo"
     max_depth: int = 6
@@ -158,6 +323,10 @@ class Config:
     timeout_seconds: float = 5.0
     llm: LLMSettings = field(default_factory=LLMSettings)
     voice: VoiceSettings = field(default_factory=VoiceSettings)
+    web: WebSettings = field(default_factory=WebSettings)
+    alerts: AlertSettings = field(default_factory=AlertSettings)
+    desktop: DesktopSettings = field(default_factory=DesktopSettings)
+    mcp_servers: dict[str, MCPServerSettings] = field(default_factory=dict)
 
     @classmethod
     def default(cls) -> "Config":
@@ -216,6 +385,12 @@ class Config:
             "timeout_seconds": self.timeout_seconds,
             "llm": self.llm.to_dict(),
             "voice": self.voice.to_dict(),
+            "web": self.web.to_dict(),
+            "alerts": self.alerts.to_dict(),
+            "desktop": self.desktop.to_dict(),
+            "mcp_servers": {
+                name: server.to_dict() for name, server in self.mcp_servers.items()
+            },
         }
 
     @classmethod
@@ -238,25 +413,32 @@ class Config:
             timeout_seconds=float(data.get("timeout_seconds", base.timeout_seconds)),
             llm=LLMSettings.from_dict(data.get("llm", {})),
             voice=VoiceSettings.from_dict(data.get("voice", {})),
+            web=WebSettings.from_dict(data.get("web", {})),
+            alerts=AlertSettings.from_dict(data.get("alerts", {})),
+            desktop=DesktopSettings.from_dict(data.get("desktop", {})),
+            mcp_servers={
+                name: MCPServerSettings.from_dict(value)
+                for name, value in data.get("mcp_servers", {}).items()
+            },
         )
 
 
 def config_path() -> Path:
-    override = os.environ.get("ODIN_CONFIG")
+    override = os.environ.get("AKKI_CONFIG")
     if override:
         return Path(override).expanduser()
     appdata = os.environ.get("APPDATA")
     root = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-    return root / "ODIN" / "config.json"
+    return root / "AKKI" / "config.json"
 
 
 def database_path() -> Path:
-    override = os.environ.get("ODIN_DB")
+    override = os.environ.get("AKKI_DB")
     if override:
         return Path(override).expanduser()
     appdata = os.environ.get("APPDATA")
     root = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-    return root / "ODIN" / "odin.db"
+    return root / "AKKI" / "akki.db"
 
 
 def save_config(config: Config, path: Path | None = None) -> Path:
@@ -275,3 +457,8 @@ def load_config(path: Path | None = None, *, create: bool = True) -> Config:
     if create:
         save_config(config, target)
     return config
+
+
+def apply_config(target: Config, source: Config) -> None:
+    for name in Config.__dataclass_fields__:
+        setattr(target, name, getattr(source, name))

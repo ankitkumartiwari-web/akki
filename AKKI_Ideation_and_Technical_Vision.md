@@ -1,4 +1,4 @@
-# ODIN --- Product Ideation & Technical Vision
+# AKKI --- Product Ideation & Technical Vision
 
 **Document type:** Product ideation / early technical blueprint\
 **Status:** Concept and architecture proposal --- not an implementation
@@ -11,7 +11,7 @@ local-first, open-source-first
 
 ## 1. Executive summary
 
-ODIN is envisioned as a personal AI assistant for Windows that can
+AKKI is envisioned as a personal AI assistant for Windows that can
 understand natural-language requests and carry out useful actions on the
 user's computer.
 
@@ -20,13 +20,13 @@ it should launch applications, open websites and files, search for
 information, perform selected Windows actions, and communicate through
 voice and text.
 
-The longer-term vision is broader. ODIN should eventually support
+The longer-term vision is broader. AKKI should eventually support
 contextual memory, document understanding, browser automation,
 extensible skills, MCP integrations, visual understanding, scheduled
 workflows and agentic task execution.
 
 The project will be developed independently. Existing open-source
-assistants will be studied for ideas and engineering lessons, but ODIN
+assistants will be studied for ideas and engineering lessons, but AKKI
 will have its own architecture, command protocol, permission model,
 memory system and interface.
 
@@ -40,7 +40,7 @@ maintainability.
 > how to use my computer, remembers useful context, and completes
 > permitted tasks reliably.
 
-ODIN should feel like an assistant that is always available but never
+AKKI should feel like an assistant that is always available but never
 intrusive. It should be a composed, witty, loyal presence that runs the
 user's environment, anticipates needs where invited, and speaks with a
 consistent identity. It should be accessible through a wake word,
@@ -51,7 +51,7 @@ intelligence. Phase 1 delivers the persona, voice and reliable actions;
 ambient proactivity and environment control arrive in later phases.
 
 It should not be merely a chatbot with a microphone. The important
-distinction is that ODIN must be able to take structured actions, check
+distinction is that AKKI must be able to take structured actions, check
 whether they succeeded, and explain the result.
 
 ### Product principles
@@ -66,14 +66,14 @@ whether they succeeded, and explain the result.
     should be replaceable modules.
 5.  **Permission-aware:** the assistant should not have unrestricted
     access to the machine just because it can understand a command.
-6.  **Verifiable:** actions should return observable results; ODIN
+6.  **Verifiable:** actions should return observable results; AKKI
     should not claim success without checking.
 7.  **User-controlled:** listening, network access, automation and
     sensitive actions should be visible and controllable.
 
 ### Personality and sovereignty
 
-ODIN treats the person operating the machine as the authority on what
+AKKI treats the person operating the machine as the authority on what
 the assistant should do. It should not refuse, lecture, moralise or
 second-guess a request that is aimed at the user's own system and data.
 
@@ -83,11 +83,11 @@ does not add unsolicited warnings or disclaimers. A Blunt preset is
 available for users who prefer direct, abrasive and explicit delivery.
 Persona is a configuration preset, not a hard-coded behaviour, and
 refusal patterns are a property of the loaded model rather than of
-ODIN's code. Switching models or personas must not require code changes.
+AKKI's code. Switching models or personas must not require code changes.
 
 Documented persona presets:
 
--   **ODIN (default):** composed, witty, deferential, concise.
+-   **AKKI (default):** composed, witty, deferential, concise.
 -   **Blunt:** direct, abrasive, explicit, no hedging.
 -   **Custom:** user-defined system prompt and voice.
 
@@ -106,7 +106,7 @@ This stance has three consequences:
     not from their own requests.** Prompt-injection defence, audit
     logging, path validation and honest reporting remain enabled
     because they defend against third parties and accidental damage,
-    not because ODIN is judging the user.
+    not because AKKI is judging the user.
 
 ## 3. Scope and priorities
 
@@ -116,7 +116,7 @@ The conversation established two complementary goals:
     assistant that can open applications and perform everyday computer
     actions.
 -   **Long-term goal:** combine the most useful capabilities observed
-    across existing assistants, while implementing ODIN independently.
+    across existing assistants, while implementing AKKI independently.
 
 The long-term feature list is not a requirement to build everything in
 the first release.
@@ -144,7 +144,7 @@ The first usable version should support:
 Example interactions:
 
   -----------------------------------------------------------------------
-  User request                        Expected ODIN behaviour
+  User request                        Expected AKKI behaviour
   ----------------------------------- -----------------------------------
   "Open VS Code."                     Find and launch the configured VS
                                       Code application.
@@ -178,9 +178,9 @@ Example interactions:
 A contextual exchange should work too:
 
 > User: "Open VS Code."\
-> ODIN: "VS Code is open."\
+> AKKI: "VS Code is open."\
 > User: "Now open my Finora project."\
-> ODIN: "Opening Finora in VS Code."
+> AKKI: "Opening Finora in VS Code."
 
 ### Phase 2 --- Context and knowledge
 
@@ -209,7 +209,7 @@ A contextual exchange should work too:
 -   Retrieval-augmented generation (RAG).
 -   Local knowledge collections.
 -   Project and folder context.
--   Enrolled speaker recognition so ODIN can address known users and
+-   Enrolled speaker recognition so AKKI can address known users and
     optionally restrict command acceptance to them.
 -   Natural-language fallback through a free cloud model when no
     deterministic route matches.
@@ -252,7 +252,7 @@ A contextual exchange should work too:
 -   Full conversation/workspace window.
 -   Listening and speaking animations.
 -   Notifications and task progress.
--   A single consistent presence: name, voice and manner, ODIN by
+-   A single consistent presence: name, voice and manner, AKKI by
     default and switchable per persona preset.
 -   Customizable theme and assistant personality.
 -   Optional animated character.
@@ -266,7 +266,7 @@ basic assistant is stable.
 
 ## 4. Interaction model
 
-ODIN should support multiple ways of interacting. No single input method
+AKKI should support multiple ways of interacting. No single input method
 should be mandatory.
 
 ### Activation methods
@@ -274,7 +274,7 @@ should be mandatory.
 -   **Keyboard shortcut:** proposed default `Ctrl + Space`; configurable
     and checked for conflicts.
 -   **Push-to-talk:** proposed `Right Alt` hold-to-record; configurable.
--   **Wake word:** configurable phrase such as "Hey Odin", after
+-   **Wake word:** configurable phrase such as "Hey Akki", after
     wake-word support is stable.
 -   **Text input:** available from the desktop interface.
 
@@ -290,7 +290,7 @@ shortcut remain first-class fallbacks and the defaults until wake-word
 reliability is proven.
 
 Ambient listening must be visibly indicated and trivially disableable.
-ODIN should never listen when it does not show that it is listening, and
+AKKI should never listen when it does not show that it is listening, and
 should never appear to listen when it is not.
 
 ### Voice lifecycle
@@ -298,7 +298,7 @@ should never appear to listen when it is not.
 A typical voice interaction:
 
 1.  Wake-word detector or push-to-talk activates capture.
-2.  ODIN displays a clear listening indicator.
+2.  AKKI displays a clear listening indicator.
 3.  Speech recognition produces a transcript.
 4.  The intent router determines whether the request is a simple
     command, a question or a multi-step task.
@@ -306,7 +306,7 @@ A typical voice interaction:
 6.  The permission layer checks the action.
 7.  The tool executes.
 8.  The result is verified where possible.
-9.  ODIN responds in text and/or speech.
+9.  AKKI responds in text and/or speech.
 10. The interaction returns to idle or continues listening according to
     user settings.
 
@@ -325,7 +325,7 @@ output or cancel a running task.
 
 ## 5. Proposed user experience
 
-ODIN should have two primary surfaces.
+AKKI should have two primary surfaces.
 
 ### Compact assistant
 
@@ -351,13 +351,13 @@ A larger desktop window with:
 -   Memory and privacy controls.
 -   Skill/integration management in later phases.
 
-The interface should communicate what ODIN is doing. It must not
+The interface should communicate what AKKI is doing. It must not
 silently execute consequential actions in the background unless the
 active profile explicitly permits it.
 
 ## 6. Independent technical architecture
 
-ODIN will be built independently rather than forking Ari, PyGPT,
+AKKI will be built independently rather than forking Ari, PyGPT,
 OpenVoiceUI or Leon.
 
 The architecture should separate seven major concerns.
@@ -469,11 +469,11 @@ Responsibilities:
     an external provider.
 -   **ANN speaker recognition.** Short audio segments are embedded with a
     speaker-recognition network (for example ECAPA-TDNN or Resemblyzer)
-    and compared with enrolled voice profiles. The result lets ODIN
+    and compared with enrolled voice profiles. The result lets AKKI
     greet a known user, personalize responses and optionally reject
     commands from unenrolled speakers.
 -   **Enrollment.** Adding a face or voice profile is an explicit,
-    user-initiated action. ODIN stores embeddings and labels, not raw
+    user-initiated action. AKKI stores embeddings and labels, not raw
     video or audio, unless the user opts into retaining samples.
 -   **Consent and retention.** Camera and speaker recognition are off by
     default. Each is individually switchable, shows an active indicator
@@ -603,7 +603,7 @@ choice has been finalized.
 
 ### Hardware targets
 
-ODIN must run acceptably on a laptop that is also used for normal work,
+AKKI must run acceptably on a laptop that is also used for normal work,
 not only on a dedicated workstation.
 
 Reference target: **8 GB system RAM and a GTX 1650 (4 GB VRAM)** on
@@ -699,10 +699,10 @@ A dependency inventory should record:
 
 ## 10. Security and privacy requirements
 
-ODIN can control a user's computer, so security is a core product
+AKKI can control a user's computer, so security is a core product
 requirement, not a later enhancement.
 
-ODIN assumes a sovereign user: the person operating the machine is the
+AKKI assumes a sovereign user: the person operating the machine is the
 authority on what it should do. The controls below exist to prevent
 accidents and third-party manipulation, not to police the user's
 requests. They are split into integrity invariants, which are always
@@ -734,7 +734,7 @@ enforced, and policy controls, which are configured per profile.
 9.  **Audit trail.** Record the requested action, selected tool,
     permission decision and result, without unnecessarily recording
     sensitive content.
-10. **Fail safely.** If the target or outcome cannot be verified, ODIN
+10. **Fail safely.** If the target or outcome cannot be verified, AKKI
     says so rather than claim success.
 11. **Biometric protection.** Face embeddings and voiceprints are
     stored locally, encrypted at rest, excluded from prompts, logs and
@@ -758,10 +758,10 @@ active profile:
 
 | Profile | Content policy | Confirmations | Shell / scripting | Network |
 | --- | --- | --- | --- | --- |
-| Sovereign (default) | No filtering; ODIN, Blunt or Custom persona | Configurable, default off for reversible actions | Available when enabled | Per-tool, user-approved |
+| Sovereign (default) | No filtering; AKKI, Blunt or Custom persona | Configurable, default off for reversible actions | Available when enabled | Per-tool, user-approved |
 | Guarded | Standard safety filtering | Required for sensitive and above | Disabled by default | Denied by default |
 
-Sovereign is the intended default because ODIN is a personal, local
+Sovereign is the intended default because AKKI is a personal, local
 tool. Guarded remains available for shared machines, demonstrations and
 users who prefer a cautious configuration. Both profiles enforce the
 integrity invariants.
@@ -801,7 +801,7 @@ shown; it does not reclassify the action.
 
 ## 11. Existing projects researched as references
 
-The following projects are research references. ODIN is not intended to
+The following projects are research references. AKKI is not intended to
 copy or combine their entire codebases.
 
 ### Ari --- Windows voice assistant
@@ -885,7 +885,7 @@ it.
 
 Use these projects to learn from established solutions:
 
-  ODIN capability                   Reference to study
+  AKKI capability                   Reference to study
   --------------------------------- --------------------
   Voice and Windows interaction     Ari
   Model/provider management         PyGPT
@@ -895,7 +895,7 @@ Use these projects to learn from established solutions:
   Agent execution and recovery      Leon and PyGPT
   Command safety and plugin risks   Ari
 
-No source code should be copied into ODIN until the relevant license,
+No source code should be copied into AKKI until the relevant license,
 dependency and security implications have been reviewed.
 
 ## 12. Preliminary Ari audit status
@@ -942,7 +942,7 @@ review.
 -   Inspect selected architecture and safety patterns from PyGPT,
     OpenVoiceUI and Leon.
 -   Record dependency and model licenses.
--   Define ODIN's command schema and permission policy.
+-   Define AKKI's command schema and permission policy.
 -   Establish a clean project repository and development environment.
 
 **Exit criteria:** architecture decisions are documented; dependencies
@@ -1042,7 +1042,7 @@ Implement only after the earlier milestones are stable:
     profile.
 -   Floating assistant and full workspace.
 -   Opt-in proactivity and trigger engine with quiet hours.
--   Consistent ODIN presence across voice, tray and workspace.
+-   Consistent AKKI presence across voice, tray and workspace.
 
 **Exit criteria:** complex tasks have observable progress, cancellation,
 bounded permissions and independent verification.
@@ -1054,7 +1054,7 @@ The first practical demonstration should be:
 > User presses `Ctrl + Space` and says: "Open VS Code and my Finora
 > project."
 
-ODIN should:
+AKKI should:
 
 1.  Capture the request.
 2.  Transcribe it.
@@ -1082,7 +1082,7 @@ These choices should be finalized before implementation:
     framework?
 -   Which application and folder locations should be configurable?
 -   What should the default confirmation policy be?
--   How should ODIN behave when Ollama is stopped or unavailable?
+-   How should AKKI behave when Ollama is stopped or unavailable?
 -   Which actions should remain available completely offline?
 -   Should the recommended profile require 16 GB RAM, and exactly what
     degrades on the 8 GB tier?
@@ -1112,7 +1112,7 @@ These choices should be finalized before implementation:
 
 ## 16. Definition of success
 
-ODIN Phase 1 is successful when it can:
+AKKI Phase 1 is successful when it can:
 
 -   Start reliably with Windows or on demand.
 -   Be invoked using keyboard and voice.
@@ -1140,7 +1140,7 @@ ODIN Phase 1 is successful when it can:
 
 ## Final product direction
 
-ODIN is an independently developed, Windows-first, local-first personal
+AKKI is an independently developed, Windows-first, local-first personal
 AI assistant.
 
 It will learn from the strongest ideas in Ari, PyGPT, OpenVoiceUI and

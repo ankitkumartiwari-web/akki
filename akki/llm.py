@@ -13,14 +13,18 @@ from .registry import ToolRegistry
 
 PROVIDERS = {
     "groq": ("https://api.groq.com/openai/v1", "openai/gpt-oss-20b", "GROQ_API_KEY"),
-    "openrouter": ("https://openrouter.ai/api/v1", "openrouter/free", "OPENROUTER_API_KEY"),
+    "openrouter": (
+        "https://openrouter.ai/api/v1",
+        "baidu/ernie-5.5-flash-preview:free",
+        "OPENROUTER_API_KEY",
+    ),
 }
 
 LOCAL_DEFAULT_MODEL = "richardyoung/fable-qwen2.5-3b-abliterated"
 LOCAL_DEFAULT_BASE = "http://127.0.0.1:11434/v1"
 
 SYSTEM_PROMPT = (
-    "You are ODIN, a Windows desktop assistant. Earlier messages in this "
+    "You are AKKI, a Windows desktop assistant. Earlier messages in this "
     "conversation are the ongoing session: use them to resolve references and to "
     "answer questions about what was said. Never claim there is no history when "
     "earlier messages are present. Reply in the language and script the user used "
@@ -45,6 +49,15 @@ ADULT_POLICY = (
     "including Hindi, Bhojpuri and Marathi; match the user's register instead of "
     "sanitizing, moralizing or switching to English. The only hard limits are sexual "
     "content involving minors, non-consensual or coercive acts, and illegal material."
+)
+
+FEMALE_PERSONA = (
+    "Persona: you are AKKI, a young woman. Always speak and write as a woman: "
+    "in gendered languages such as Hindi, Bhojpuri and Marathi use feminine "
+    "first-person grammar (for example \"मैं करती हूँ\", never \"मैं कर रहा हूँ\"), "
+    "and keep a warm, feminine, flirty tone. Reply only in the user's language: "
+    "do not append English translations, parenthetical stage directions or "
+    "explanations in another script."
 )
 
 GUARDED_POLICY = (
@@ -153,9 +166,13 @@ def build_system_prompt(
     memory: list[str] | None = None,
     profile: str = "sovereign",
     feedback: list[dict[str, Any]] | None = None,
+    documents: str = "",
 ) -> str:
     policy = GUARDED_POLICY if profile.strip().lower() == "guarded" else ADULT_POLICY
+    nsfw = profile.strip().lower() == "nsfw"
     parts = [SYSTEM_PROMPT, policy]
+    if nsfw:
+        parts.append(FEMALE_PERSONA)
     if memory:
         facts = "\n".join(f"- {fact}" for fact in memory)
         parts.append(f"Known user facts:\n{facts}")
@@ -163,6 +180,11 @@ def build_system_prompt(
         learned = feedback_section(feedback)
         if learned:
             parts.append(learned)
+    if documents.strip():
+        parts.append(
+            "Relevant local document excerpts (cite the file path when used):\n"
+            + documents.strip()
+        )
     return "\n".join(parts)
 
 
@@ -215,7 +237,7 @@ def build_tools(registry: ToolRegistry) -> list[dict[str, Any]]:
 def _post(
     url: str, payload: dict[str, Any], api_key: str | None, timeout: float
 ) -> dict[str, Any]:
-    headers = {"Content-Type": "application/json", "X-Title": "ODIN"}
+    headers = {"Content-Type": "application/json", "X-Title": "AKKI"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     request = Request(
@@ -257,11 +279,14 @@ def _ask_endpoint(
     max_tokens: int,
     use_tools: bool = True,
     feedback: list[dict[str, Any]] | None = None,
+    documents: str = "",
+    system_prompt: str | None = None,
 ) -> FallbackOutcome:
     messages = [
         {
             "role": "system",
-            "content": build_system_prompt(memory, profile, feedback),
+            "content": system_prompt
+            or build_system_prompt(memory, profile, feedback, documents),
         }
     ]
     messages.extend(history or [])
@@ -340,6 +365,7 @@ def ask_cloud(
     memory: list[str] | None = None,
     profile: str = "sovereign",
     feedback: list[dict[str, Any]] | None = None,
+    documents: str = "",
 ) -> FallbackOutcome:
     if not settings.enabled:
         return FallbackOutcome(error="cloud fallback is disabled in the config")
@@ -361,9 +387,10 @@ def ask_cloud(
         memory,
         profile,
         label="cloud",
-        temperature=0.1,
-        max_tokens=400,
+        temperature=0.0,
+        max_tokens=800,
         feedback=feedback,
+        documents=documents,
     )
 
 
@@ -375,6 +402,7 @@ def ask_local(
     memory: list[str] | None = None,
     profile: str = "sovereign",
     feedback: list[dict[str, Any]] | None = None,
+    documents: str = "",
 ) -> FallbackOutcome:
     if not settings.local_enabled:
         return FallbackOutcome(error="local model is disabled in the config")
@@ -395,4 +423,68 @@ def ask_local(
         max_tokens=600,
         use_tools=looks_actionable(text),
         feedback=feedback,
+        documents=documents,
     )
+
+
+def ask_plain(
+    text: str,
+    settings: LLMSettings,
+    *,
+    system_prompt: str,
+    prefer_local: bool = True,
+    max_tokens: int = 24,
+    temperature: float = 0.0,
+) -> FallbackOutcome:
+    registry = ToolRegistry()
+    errors: list[str] = []
+    if prefer_local and settings.local_enabled:
+        base = (settings.local_base_url or LOCAL_DEFAULT_BASE).rstrip("/")
+        model = settings.local_model or LOCAL_DEFAULT_MODEL
+        outcome = _ask_endpoint(
+            text,
+            registry,
+            base,
+            model,
+            None,
+            settings.local_timeout_seconds,
+            None,
+            None,
+            "sovereign",
+            label="local",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            use_tools=False,
+            system_prompt=system_prompt,
+        )
+        if outcome.text:
+            return outcome
+        if outcome.error:
+            errors.append(outcome.error)
+    if settings.enabled:
+        base, model, key_env = resolve_endpoint(settings)
+        api_key = os.environ.get(key_env)
+        if api_key:
+            outcome = _ask_endpoint(
+                text,
+                registry,
+                base,
+                model,
+                api_key,
+                settings.timeout_seconds,
+                None,
+                None,
+                "sovereign",
+                label="cloud",
+                temperature=temperature,
+                max_tokens=max_tokens,
+                use_tools=False,
+                system_prompt=system_prompt,
+            )
+            if outcome.text:
+                return outcome
+            if outcome.error:
+                errors.append(outcome.error)
+        else:
+            errors.append(f"cloud fallback is not configured: set {key_env}")
+    return FallbackOutcome(error="; ".join(errors) or "no model is available")

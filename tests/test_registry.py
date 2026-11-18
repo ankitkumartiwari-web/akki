@@ -1,8 +1,8 @@
 import unittest
 
-from odin.models import ActionLevel, ActionRequest, ToolResult
-from odin.permissions import requires_confirmation
-from odin.registry import ToolRegistry
+from akki.models import ActionLevel, ActionRequest, ToolResult
+from akki.permissions import requires_confirmation
+from akki.registry import ToolRegistry
 
 
 def echo(value: str) -> ToolResult:

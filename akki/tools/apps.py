@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -30,8 +31,81 @@ KNOWN_PATHS = {
 }
 
 
+_START_APPS_CACHE: list[dict[str, str]] | None = None
+
+
 def _normalize(value: str) -> str:
     return " ".join(value.lower().split())
+
+
+def _query_start_apps() -> list[dict[str, str]]:
+    script = "Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress"
+    try:
+        completed = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if completed.returncode != 0:
+        return []
+    raw = (completed.stdout or "").strip()
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    items = payload if isinstance(payload, list) else [payload]
+    apps: list[dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("Name") or "").strip()
+        app_id = str(item.get("AppID") or "").strip()
+        if name and app_id:
+            apps.append({"name": name, "app_id": app_id})
+    apps.sort(key=lambda app: app["name"].lower())
+    return apps
+
+
+def discover_apps(*, refresh: bool = False) -> list[dict[str, str]]:
+    global _START_APPS_CACHE
+    if refresh or _START_APPS_CACHE is None:
+        _START_APPS_CACHE = _query_start_apps()
+    return list(_START_APPS_CACHE)
+
+
+def list_apps(query: str = "", *, refresh: bool = False) -> list[dict[str, str]]:
+    apps = discover_apps(refresh=refresh)
+    wanted = _normalize(query)
+    if not wanted:
+        return apps
+    return [app for app in apps if wanted in _normalize(app["name"])]
+
+
+def find_start_app(query: str) -> dict[str, str] | None:
+    wanted = _normalize(query)
+    if not wanted:
+        return None
+    best: tuple[int, dict[str, str]] | None = None
+    for app in discover_apps():
+        name = _normalize(app["name"])
+        if name == wanted:
+            score = 0
+        elif name.startswith(wanted):
+            score = 1
+        elif wanted in name:
+            score = 2
+        else:
+            continue
+        if best is None or score < best[0]:
+            best = (score, app)
+            if score == 0:
+                break
+    return best[1] if best else None
 
 
 def _viable(path: Path) -> bool:
@@ -148,10 +222,15 @@ def _shell_open(target: Path) -> ToolResult:
     return ToolResult.success(f"Opened {target} (unverified)", verified=False)
 
 
-def _launch_aumid(name: str, aumid: str) -> ToolResult:
+def _launch_aumid(
+    name: str, aumid: str, args: list[str] | None = None
+) -> ToolResult:
+    target = f"shell:AppsFolder\\{aumid}"
+    if args:
+        target = f"{target} {' '.join(args)}"
     try:
         subprocess.Popen(
-            ["explorer.exe", f"shell:AppsFolder\\{aumid}"],
+            ["explorer.exe", target],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -196,9 +275,13 @@ def launch_app(alias: str, *, config: Config) -> ToolResult:
     if shortcut:
         return _shell_open(shortcut)
 
+    start_app = find_start_app(name)
+    if start_app:
+        return _launch_aumid(start_app["name"], start_app["app_id"])
+
     return ToolResult.failure(
         f"could not find an application named '{name}'. "
-        "Add it to the apps section of the ODIN config."
+        "Add it to the apps section of the AKKI config."
     )
 
 
@@ -239,9 +322,14 @@ def open_in_app(alias: str, target: str, *, config: Config) -> ToolResult:
     entry = match[1] if match else None
     executable = _resolve_executable(entry, alias)
     if executable is None:
+        start_app = find_start_app(alias)
+        if start_app:
+            return _launch_aumid(
+                start_app["name"], start_app["app_id"], [str(resolved)]
+            )
         return ToolResult.failure(
             f"could not find an application named '{alias}'. "
-            "Add it to the apps section of the ODIN config."
+            "Add it to the apps section of the AKKI config."
         )
 
     result = _spawn(executable, [str(resolved)])

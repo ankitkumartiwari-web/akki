@@ -42,6 +42,61 @@ CREATE TABLE IF NOT EXISTS feedback (
     created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_rating ON feedback(rating, id);
+CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    mtime REAL NOT NULL,
+    size INTEGER NOT NULL,
+    indexed_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS doc_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chunks_doc ON doc_chunks(doc_id, ordinal);
+CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(
+    text,
+    path UNINDEXED,
+    chunk_id UNINDEXED
+);
+CREATE TABLE IF NOT EXISTS speakers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    embedding TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS faces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    image_b64 TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    command TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    interval_seconds REAL,
+    daily_time TEXT,
+    next_run REAL NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run REAL,
+    last_status TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS alert_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    importance REAL NOT NULL,
+    sent INTEGER NOT NULL DEFAULT 0,
+    sent_at REAL NOT NULL,
+    UNIQUE(source, item_key)
+);
+CREATE INDEX IF NOT EXISTS idx_alert_items_sent ON alert_items(sent_at);
 """
 
 
@@ -70,11 +125,88 @@ class Storage:
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(str(self.path))
+        self._db = sqlite3.connect(str(self.path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(SCHEMA)
         self._db.commit()
+
+    @property
+    def db(self) -> sqlite3.Connection:
+        return self._db
+
+    def add_job(
+        self,
+        command: str,
+        kind: str,
+        interval_seconds: float | None,
+        daily_time: str | None,
+        next_run: float,
+    ) -> int:
+        cursor = self._db.execute(
+            "INSERT INTO jobs(command, kind, interval_seconds, daily_time, next_run, enabled, created_at) "
+            "VALUES (?, ?, ?, ?, ?, 1, ?)",
+            (command, kind, interval_seconds, daily_time, next_run, time.time()),
+        )
+        self._db.commit()
+        return int(cursor.lastrowid)
+
+    def list_jobs(self) -> list[dict[str, object]]:
+        rows = self._db.execute("SELECT * FROM jobs ORDER BY id").fetchall()
+        return [
+            {key: row[key] for key in row.keys()} for row in rows
+        ]
+
+    def delete_job(self, job_id: int) -> bool:
+        cursor = self._db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        self._db.commit()
+        return cursor.rowcount > 0
+
+    def pop_due_jobs(self, now: float) -> list[dict[str, object]]:
+        rows = self._db.execute(
+            "SELECT * FROM jobs WHERE enabled = 1 AND next_run <= ? ORDER BY next_run LIMIT 10",
+            (now,),
+        ).fetchall()
+        jobs: list[dict[str, object]] = []
+        for row in rows:
+            interval = float(row["interval_seconds"] or 3600)
+            next_run = now + interval
+            self._db.execute(
+                "UPDATE jobs SET next_run = ?, last_run = ? WHERE id = ?",
+                (next_run, now, int(row["id"])),
+            )
+            jobs.append({key: row[key] for key in row.keys()})
+        self._db.commit()
+        return jobs
+
+    def alert_seen(self, source: str, item_key: str) -> bool:
+        row = self._db.execute(
+            "SELECT 1 FROM alert_items WHERE source = ? AND item_key = ?",
+            (source, item_key),
+        ).fetchone()
+        return row is not None
+
+    def record_alert(
+        self,
+        source: str,
+        item_key: str,
+        title: str,
+        importance: float,
+        *,
+        sent: bool = True,
+    ) -> None:
+        self._db.execute(
+            "INSERT OR IGNORE INTO alert_items(source, item_key, title, importance, sent, sent_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (source, item_key, title, importance, 1 if sent else 0, time.time()),
+        )
+        self._db.commit()
+
+    def recent_alerts(self, limit: int = 20) -> list[dict[str, object]]:
+        rows = self._db.execute(
+            "SELECT * FROM alert_items ORDER BY sent_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [{key: row[key] for key in row.keys()} for row in rows]
 
     def close(self) -> None:
         self._db.close()

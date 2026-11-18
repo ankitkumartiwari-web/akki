@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from odin.config import Config
-from odin.tools.files import find_files, open_path, search_paths
+from akki.config import Config
+from akki.tools.files import find_files, open_path, search_paths
 
 
 class FileSearchTests(unittest.TestCase):

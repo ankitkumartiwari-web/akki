@@ -2,13 +2,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from odin.storage import Storage, make_cache_key
+from akki.storage import Storage, make_cache_key
 
 
 class StorageTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.db = Path(self.temp.name) / "odin.db"
+        self.db = Path(self.temp.name) / "akki.db"
         self.storage = Storage(self.db)
 
     def tearDown(self) -> None:

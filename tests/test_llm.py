@@ -3,16 +3,17 @@ import os
 import unittest
 from unittest import mock
 
-from odin.config import LLMSettings
-from odin.llm import (
+from akki.config import LLMSettings
+from akki.llm import (
     ask_cloud,
     ask_local,
+    ask_plain,
     build_system_prompt,
     build_tools,
     resolve_endpoint,
 )
-from odin.models import ActionLevel, ToolResult
-from odin.registry import ToolRegistry
+from akki.models import ActionLevel, ToolResult
+from akki.registry import ToolRegistry
 
 
 def echo(value: str) -> ToolResult:
@@ -63,7 +64,7 @@ class LLMTests(unittest.TestCase):
         settings = LLMSettings(provider="openrouter")
         base, model, key_env = resolve_endpoint(settings)
         self.assertEqual(base, "https://openrouter.ai/api/v1")
-        self.assertEqual(model, "openrouter/free")
+        self.assertEqual(model, "baidu/ernie-5.5-flash-preview:free")
         self.assertEqual(key_env, "OPENROUTER_API_KEY")
 
     def test_sovereign_prompt_allows_adult_policy(self) -> None:
@@ -73,11 +74,38 @@ class LLMTests(unittest.TestCase):
         self.assertIn("safe for general audiences", guarded)
         self.assertNotEqual(sovereign, guarded)
 
+    def test_nsfw_profile_uses_adult_policy(self) -> None:
+        nsfw = build_system_prompt(profile="nsfw")
+        self.assertIn("consenting adults", nsfw)
+
+    def test_feminine_persona_is_nsfw_only(self) -> None:
+        nsfw = build_system_prompt(profile="nsfw")
+        sovereign = build_system_prompt(profile="sovereign")
+        self.assertIn("young woman", nsfw)
+        self.assertIn("करती हूँ", nsfw)
+        self.assertNotIn("young woman", sovereign)
+        self.assertNotIn("करती हूँ", sovereign)
+
+    def test_ask_plain_disables_tools_and_uses_custom_prompt(self) -> None:
+        payload = {"choices": [{"message": {"content": "0.8"}}]}
+        with mock.patch(
+            "akki.llm.urlopen", return_value=FakeResponse(payload)
+        ) as call:
+            outcome = ask_plain(
+                "rate this",
+                LLMSettings(),
+                system_prompt="classify only",
+            )
+        self.assertEqual(outcome.text, "0.8")
+        body = json.loads(call.call_args.args[0].data)
+        self.assertNotIn("tools", body)
+        self.assertEqual(body["messages"][0]["content"], "classify only")
+
     def test_local_uses_ollama_without_auth(self) -> None:
         payload = {"choices": [{"message": {"content": "ok"}}]}
         settings = LLMSettings()
         with mock.patch(
-            "odin.llm.urlopen", return_value=FakeResponse(payload)
+            "akki.llm.urlopen", return_value=FakeResponse(payload)
         ) as call:
             outcome = ask_local("hi", registry(), settings)
         self.assertEqual(outcome.text, "ok")
@@ -89,6 +117,16 @@ class LLMTests(unittest.TestCase):
         body = json.loads(request.data)
         self.assertEqual(body["model"], settings.local_model)
         self.assertNotIn("tools", body)
+
+    def test_local_sends_documents_to_model(self) -> None:
+        payload = {"choices": [{"message": {"content": "ok"}}]}
+        with mock.patch(
+            "akki.llm.urlopen", return_value=FakeResponse(payload)
+        ) as call:
+            ask_local("hi", registry(), LLMSettings(), documents="notes.md: hello world")
+        body = json.loads(call.call_args.args[0].data)
+        self.assertIn("notes.md: hello world", body["messages"][0]["content"])
+        self.assertIn("Relevant local document excerpts", body["messages"][0]["content"])
 
     def test_prompt_includes_reward_and_punishment(self) -> None:
         prompt = build_system_prompt(
@@ -106,7 +144,7 @@ class LLMTests(unittest.TestCase):
     def test_local_sends_feedback_to_model(self) -> None:
         payload = {"choices": [{"message": {"content": "ok"}}]}
         with mock.patch(
-            "odin.llm.urlopen", return_value=FakeResponse(payload)
+            "akki.llm.urlopen", return_value=FakeResponse(payload)
         ) as call:
             ask_local(
                 "hi",
@@ -123,7 +161,7 @@ class LLMTests(unittest.TestCase):
     def test_local_adds_tools_for_action_requests(self) -> None:
         payload = {"choices": [{"message": {"content": "ok"}}]}
         with mock.patch(
-            "odin.llm.urlopen", return_value=FakeResponse(payload)
+            "akki.llm.urlopen", return_value=FakeResponse(payload)
         ) as call:
             ask_local("open chrome", registry(), LLMSettings())
         body = json.loads(call.call_args.args[0].data)
@@ -161,7 +199,7 @@ class LLMTests(unittest.TestCase):
             ]
         }
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
-            with mock.patch("odin.llm.urlopen", return_value=FakeResponse(payload)) as call:
+            with mock.patch("akki.llm.urlopen", return_value=FakeResponse(payload)) as call:
                 outcome = ask_cloud("say hi", registry(), self.settings())
         self.assertEqual(outcome.request.tool, "echo")
         self.assertEqual(outcome.request.args, {"value": "hi"})
@@ -173,7 +211,7 @@ class LLMTests(unittest.TestCase):
     def test_text_reply(self) -> None:
         payload = {"choices": [{"message": {"content": "It is sunny."}}]}
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
-            with mock.patch("odin.llm.urlopen", return_value=FakeResponse(payload)):
+            with mock.patch("akki.llm.urlopen", return_value=FakeResponse(payload)):
                 outcome = ask_cloud("weather?", registry(), self.settings())
         self.assertIsNone(outcome.request)
         self.assertEqual(outcome.text, "It is sunny.")
@@ -183,7 +221,7 @@ class LLMTests(unittest.TestCase):
         text = {"choices": [{"message": {"content": "Hey!"}}]}
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
             with mock.patch(
-                "odin.llm.urlopen",
+                "akki.llm.urlopen",
                 side_effect=[FakeResponse(empty), FakeResponse(text)],
             ) as call:
                 outcome = ask_cloud("wassup", registry(), self.settings())
@@ -194,7 +232,7 @@ class LLMTests(unittest.TestCase):
         empty = {"choices": [{"message": {"content": ""}}]}
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
             with mock.patch(
-                "odin.llm.urlopen",
+                "akki.llm.urlopen",
                 side_effect=[FakeResponse(empty), FakeResponse(empty)],
             ):
                 outcome = ask_cloud("wassup", registry(), self.settings())
@@ -204,7 +242,7 @@ class LLMTests(unittest.TestCase):
         payload = {"choices": [{"message": {"content": "ok"}}]}
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
             with mock.patch(
-                "odin.llm.urlopen", return_value=FakeResponse(payload)
+                "akki.llm.urlopen", return_value=FakeResponse(payload)
             ) as call:
                 ask_cloud(
                     "what do you know",
@@ -223,7 +261,7 @@ class LLMTests(unittest.TestCase):
         ]
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
             with mock.patch(
-                "odin.llm.urlopen", return_value=FakeResponse(payload)
+                "akki.llm.urlopen", return_value=FakeResponse(payload)
             ) as call:
                 ask_cloud("now", registry(), self.settings(), history=history)
         request = call.call_args.args[0]
@@ -241,7 +279,7 @@ class LLMTests(unittest.TestCase):
             ]
         }
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
-            with mock.patch("odin.llm.urlopen", return_value=FakeResponse(payload)):
+            with mock.patch("akki.llm.urlopen", return_value=FakeResponse(payload)):
                 outcome = ask_cloud("delete everything", registry(), self.settings())
         self.assertIsNone(outcome.request)
         self.assertIn("unknown tool", outcome.error)
@@ -253,7 +291,7 @@ class LLMTests(unittest.TestCase):
             ]
         }
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}):
-            with mock.patch("odin.llm.urlopen", return_value=FakeResponse(payload)):
+            with mock.patch("akki.llm.urlopen", return_value=FakeResponse(payload)):
                 outcome = ask_cloud("bad", registry(), self.settings())
         self.assertIsNone(outcome.request)
         self.assertIn("invalid tool arguments", outcome.error)

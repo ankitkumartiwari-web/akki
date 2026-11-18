@@ -3,14 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from odin.logsetup import configure_logging
+from akki.logsetup import configure_logging
 
 
 class LoggingTests(unittest.TestCase):
     def test_writes_to_rotating_file(self) -> None:
-        logger = logging.getLogger("odin")
+        logger = logging.getLogger("akki")
         with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "odin.log"
+            target = Path(tmp) / "akki.log"
             configured = configure_logging(target)
             try:
                 logger.info("hello audit")
@@ -18,11 +18,11 @@ class LoggingTests(unittest.TestCase):
                     handler.flush()
                 text = target.read_text(encoding="utf-8")
             finally:
-                handler = getattr(logger, "_odin_handler", None)
+                handler = getattr(logger, "_akki_handler", None)
                 if handler is not None:
                     logger.removeHandler(handler)
                     handler.close()
-                    delattr(logger, "_odin_handler")
+                    delattr(logger, "_akki_handler")
         self.assertEqual(configured, target)
         self.assertIn("hello audit", text)
 

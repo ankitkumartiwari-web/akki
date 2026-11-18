@@ -3,19 +3,23 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "odin-assistant"
-version = "0.2.0"
+name = "akki-assistant"
+version = "0.4.0"
 description = "Local-first Windows desktop assistant"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["numpy>=1.26", "pillow>=10"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-voice = ["faster-whisper>=1.0", "sounddevice>=0.4", "piper-tts>=1.8"]
+voice = ["faster-whisper>=1.0", "sounddevice>=0.4", "piper-tts>=1.8", "edge-tts>=6.1"]
+docs = ["pypdf>=4"]
+vision = ["opencv-python>=4.8"]
+desktop = ["pystray>=0.19", "pillow>=10"]
 
 [project.scripts]
-odin = "odin.cli:main"
+akki = "akki.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["odin*"]
+include = ["akki*"]
+

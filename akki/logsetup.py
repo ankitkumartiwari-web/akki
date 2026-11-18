@@ -8,13 +8,13 @@ from .config import database_path
 
 
 def log_path() -> Path:
-    return database_path().parent / "odin.log"
+    return database_path().parent / "akki.log"
 
 
 def configure_logging(path: Path | str | None = None, level: int = logging.INFO) -> Path:
-    logger = logging.getLogger("odin")
+    logger = logging.getLogger("akki")
     target = Path(path) if path is not None else log_path()
-    existing = getattr(logger, "_odin_handler", None)
+    existing = getattr(logger, "_akki_handler", None)
     if isinstance(existing, RotatingFileHandler):
         return Path(existing.baseFilename)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -33,5 +33,5 @@ def configure_logging(path: Path | str | None = None, level: int = logging.INFO)
     logger.setLevel(level)
     logger.propagate = False
     logger.addHandler(handler)
-    setattr(logger, "_odin_handler", handler)
+    setattr(logger, "_akki_handler", handler)
     return target

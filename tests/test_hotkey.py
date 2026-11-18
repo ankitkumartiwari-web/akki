@@ -1,6 +1,6 @@
 import unittest
 
-from odin.hotkey import MOD_ALT, MOD_CONTROL, MOD_SHIFT, HotkeyError, parse_hotkey
+from akki.hotkey import MOD_ALT, MOD_CONTROL, MOD_SHIFT, HotkeyError, parse_hotkey
 
 
 class HotkeyTests(unittest.TestCase):

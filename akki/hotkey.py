@@ -46,7 +46,7 @@ KEYS.update({f"f{number}": 0x6F + number for number in range(1, 25)})
 KEYS.update({letter: ord(letter.upper()) for letter in "abcdefghijklmnopqrstuvwxyz"})
 KEYS.update({digit: ord(digit) for digit in "0123456789"})
 
-logger = logging.getLogger("odin.hotkey")
+logger = logging.getLogger("akki.hotkey")
 logger.addHandler(logging.NullHandler())
 
 
@@ -86,7 +86,7 @@ class HotkeyListener:
         self._modifiers, self._key = parse_hotkey(hotkey)
         self._id = (id(self) >> 4) & 0xBFFF or 1
         self._thread = threading.Thread(
-            target=self._run, name="odin-hotkey", daemon=True
+            target=self._run, name="akki-hotkey", daemon=True
         )
         self._ready = threading.Event()
         self._thread_id: int | None = None

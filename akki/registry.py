@@ -11,7 +11,7 @@ from .permissions import requires_confirmation
 
 ToolFunc = Callable[..., ToolResult]
 ConfirmFunc = Callable[[str], bool]
-logger = logging.getLogger("odin.registry")
+logger = logging.getLogger("akki.registry")
 logger.addHandler(logging.NullHandler())
 
 
@@ -39,6 +39,9 @@ class ToolRegistry:
         if name in self._tools:
             raise ValueError(f"tool already registered: {name}")
         self._tools[name] = ToolSpec(name, description, level, func, parameters or {})
+
+    def unregister(self, name: str) -> bool:
+        return self._tools.pop(name, None) is not None
 
     def get(self, name: str) -> ToolSpec | None:
         return self._tools.get(name)

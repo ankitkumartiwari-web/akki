@@ -91,6 +91,26 @@ def route(text: str, config: Config | None = None) -> ActionRequest | None:
         )
         return ActionRequest("find_files", {"query": query.strip()}, raw)
 
+    match = re.fullmatch(
+        r"(?:read|fetch|summarize|inspect|tell me about|what(?:'s| is) on) (https?://\S+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("read_url", {"url": match.group(1)}, raw)
+
+    if re.fullmatch(r"lock(?:\s+(?:my|the|computer|screen|my screen|the screen|my computer|the computer))?", lowered):
+        return ActionRequest("lock_screen", {}, raw)
+    if lowered == "clipboard" or lowered.startswith("clipboard get") or lowered.startswith("clipboard read"):
+        return ActionRequest("clipboard_read", {}, raw)
+    parts = cleaned.split(" ", 2)
+    if (
+        len(parts) >= 3
+        and parts[0] == "clipboard"
+        and parts[1].lower() in {"set", "write", "copy"}
+    ):
+        return ActionRequest("clipboard_write", {"text": parts[2].strip()}, raw)
+
     match = re.fullmatch(r"(?:go to|visit) (.+)", cleaned, re.IGNORECASE)
     if match:
         target = _site(_strip_article(match.group(1)))

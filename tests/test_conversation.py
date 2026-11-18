@@ -1,7 +1,7 @@
 import unittest
 
-from odin.conversation import Conversation, resolve_followup
-from odin.models import ActionRequest, ToolResult
+from akki.conversation import Conversation, resolve_followup
+from akki.models import ActionRequest, ToolResult
 
 
 class ConversationTests(unittest.TestCase):
@@ -15,17 +15,17 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(again, request)
 
     def test_open_it_uses_last_match(self) -> None:
-        request = ActionRequest("find_files", {"query": "odin"})
-        result = ToolResult.success("found", data={"matches": ["C:\\odin\\doc.md"]})
+        request = ActionRequest("find_files", {"query": "akki"})
+        result = ToolResult.success("found", data={"matches": ["C:\\akki\\doc.md"]})
         self.conversation.record(request, result)
         follow = resolve_followup("open it", self.conversation)
         self.assertIsNotNone(follow)
         self.assertEqual(follow.tool, "open_path")
-        self.assertEqual(follow.args, {"path": "C:\\odin\\doc.md"})
+        self.assertEqual(follow.args, {"path": "C:\\akki\\doc.md"})
 
     def test_open_it_in_app(self) -> None:
-        result = ToolResult.success("found", data={"matches": ["C:\\odin\\doc.md"]})
-        self.conversation.record(ActionRequest("find_files", {"query": "odin"}), result)
+        result = ToolResult.success("found", data={"matches": ["C:\\akki\\doc.md"]})
+        self.conversation.record(ActionRequest("find_files", {"query": "akki"}), result)
         follow = resolve_followup("open it in the code editor", self.conversation)
         self.assertIsNotNone(follow)
         self.assertEqual(follow.tool, "open_in_app")
