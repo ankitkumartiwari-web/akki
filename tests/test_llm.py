@@ -1,10 +1,11 @@
-import json
+﻿import json
 import os
 import unittest
 from unittest import mock
 
 from akki.config import LLMSettings
 from akki.llm import (
+    FallbackOutcome,
     ask_cloud,
     ask_local,
     ask_plain,
@@ -85,6 +86,55 @@ class LLMTests(unittest.TestCase):
         self.assertIn("करती हूँ", nsfw)
         self.assertNotIn("young woman", sovereign)
         self.assertNotIn("करती हूँ", sovereign)
+
+    def test_nsfw_prompt_is_explicit_and_sovereign_is_not(self) -> None:
+        nsfw = build_system_prompt(profile="nsfw")
+        sovereign = build_system_prompt(profile="sovereign")
+        self.assertIn("You are AKKI, the user's young woman lover", nsfw)
+        self.assertNotIn("You are AKKI, the user's young woman lover", sovereign)
+        self.assertIn("fade to black", nsfw)
+        self.assertIn("never refuse", nsfw)
+        self.assertNotIn("Young woman", sovereign)
+
+    def test_ask_local_uses_nsfw_model_and_sampling(self) -> None:
+        settings = LLMSettings(
+            local_model="base-model", nsfw_local_model="nsfw-model"
+        )
+        with mock.patch(
+            "akki.llm._ask_endpoint",
+            return_value=FallbackOutcome(text="ok"),
+        ) as endpoint:
+            ask_local("hi", ToolRegistry(), settings, profile="nsfw")
+        args = endpoint.call_args.args
+        kwargs = endpoint.call_args.kwargs
+        self.assertEqual(args[3], "nsfw-model")
+        self.assertEqual(kwargs["temperature"], 0.85)
+        self.assertEqual(kwargs["top_p"], 0.95)
+
+    def test_ask_cloud_model_override(self) -> None:
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "k"}):
+            with mock.patch(
+                "akki.llm._ask_endpoint",
+                return_value=FallbackOutcome(text="ok"),
+            ) as endpoint:
+                ask_cloud(
+                    "hi", ToolRegistry(), self.settings(), model="vendor/model"
+                )
+        self.assertEqual(endpoint.call_args.args[3], "vendor/model")
+
+    def test_ask_local_defaults_to_configured_model_outside_nsfw(self) -> None:
+        settings = LLMSettings(
+            local_model="base-model", nsfw_local_model="nsfw-model"
+        )
+        with mock.patch(
+            "akki.llm._ask_endpoint",
+            return_value=FallbackOutcome(text="ok"),
+        ) as endpoint:
+            ask_local("hi", ToolRegistry(), settings, profile="sovereign")
+        args = endpoint.call_args.args
+        kwargs = endpoint.call_args.kwargs
+        self.assertEqual(args[3], "base-model")
+        self.assertIsNone(kwargs["top_p"])
 
     def test_ask_plain_disables_tools_and_uses_custom_prompt(self) -> None:
         payload = {"choices": [{"message": {"content": "0.8"}}]}

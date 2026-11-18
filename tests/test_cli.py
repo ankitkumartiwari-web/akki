@@ -8,7 +8,13 @@ from pathlib import Path
 from unittest import mock
 
 import akki.cli as cli_module
-from akki.cli import build_registry, handle, repl, speak_text
+from akki.cli import (
+    build_registry,
+    handle,
+    is_latin_hindi,
+    repl,
+    speak_text,
+)
 from akki.config import Config
 from akki.conversation import Conversation
 from akki.llm import FallbackOutcome
@@ -269,6 +275,26 @@ class HandleTests(unittest.TestCase):
             speak.call_args.kwargs["edge_voice"], "hi-IN-SwaraNeural"
         )
 
+    def test_speak_text_uses_hindi_voice_for_latin_hinglish(self) -> None:
+        self.config.profile = "nsfw"
+        self.config.voice.tts_engine = "edge"
+        self.config.voice.nsfw_edge_voice = "en-IN-NeerjaExpressiveNeural"
+        self.config.voice.nsfw_hindi_edge_voice = "hi-IN-SwaraNeural"
+        with mock.patch("akki.cli.speak") as speak:
+            speak_text(
+                "Mai tumhare saath baat karna chahti hoon, bahut maza aayega.",
+                self.config,
+            )
+        self.assertEqual(
+            speak.call_args.kwargs["edge_voice"], "hi-IN-SwaraNeural"
+        )
+
+    def test_latin_hindi_detection(self) -> None:
+        self.assertTrue(is_latin_hindi("Main tumhare saath baat karna chahti hoon"))
+        self.assertTrue(is_latin_hindi("kya hai yeh, mujhe batao"))
+        self.assertFalse(is_latin_hindi("Hello there, how are you today?"))
+        self.assertFalse(is_latin_hindi("Open the folder and find the file"))
+
     def test_repl_wake_on_starts_hotkey_capture_pipeline(self) -> None:
         self.config.voice.wake_enabled = True
         self.config.voice.hotkey_enabled = False
@@ -474,6 +500,85 @@ class HandleTests(unittest.TestCase):
         self.assertEqual(result.message, "local answer")
         local.assert_called_once()
         cloud.assert_not_called()
+
+    def test_nsfw_profile_runs_local_tier_first(self) -> None:
+        self.config.profile = "nsfw"
+        self.config.llm.local_enabled = True
+        self.config.llm.local_first = False
+        with mock.patch(
+            "akki.cli.ask_local", return_value=FallbackOutcome(text="local answer")
+        ) as local:
+            with mock.patch("akki.cli.ask_cloud") as cloud:
+                result = handle(
+                    "tell me something interesting",
+                    self.config,
+                    self.registry,
+                    Conversation(),
+                    self.storage,
+                )
+        self.assertEqual(result.message, "local answer")
+        local.assert_called_once()
+        cloud.assert_not_called()
+
+    def test_nsfw_cloud_model_takes_priority(self) -> None:
+        self.config.profile = "nsfw"
+        self.config.llm.local_enabled = True
+        self.config.llm.nsfw_model = "vendor/nsfw-model"
+        with mock.patch("akki.cli.ask_local") as local:
+            with mock.patch(
+                "akki.cli.ask_cloud",
+                return_value=FallbackOutcome(text="cloud answer"),
+            ) as cloud:
+                result = handle(
+                    "tell me something interesting",
+                    self.config,
+                    self.registry,
+                    Conversation(),
+                    self.storage,
+                )
+        self.assertEqual(result.message, "cloud answer")
+        cloud.assert_called_once()
+        local.assert_not_called()
+
+    def test_unsupported_script_reply_is_retried_on_next_tier(self) -> None:
+        self.config.llm.local_enabled = True
+        self.config.llm.local_first = True
+        hebrew = "שלום, מה שלומך היום"
+        with mock.patch(
+            "akki.cli.ask_local", return_value=FallbackOutcome(text=hebrew)
+        ):
+            with mock.patch(
+                "akki.cli.ask_cloud",
+                return_value=FallbackOutcome(text="Hello, how are you?"),
+            ):
+                result = handle(
+                    "hi there, unsupported script probe",
+                    self.config,
+                    self.registry,
+                    Conversation(),
+                    self.storage,
+                )
+        self.assertEqual(result.message, "Hello, how are you?")
+        self.assertNotIn("ש", result.message)
+
+    def test_unsupported_script_only_gives_friendly_fallback(self) -> None:
+        self.config.llm.local_enabled = True
+        self.config.llm.enabled = False
+        with mock.patch(
+            "akki.cli.ask_local",
+            return_value=FallbackOutcome(text="שלום חבר"),
+        ):
+            result = handle(
+                "hi again, unsupported script probe two",
+                self.config,
+                self.registry,
+                Conversation(),
+                self.storage,
+            )
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            result.message, "Sorry, I didn't catch that. Please say it again."
+        )
 
     def test_local_failure_falls_back_to_cloud(self) -> None:
         self.config.llm.local_enabled = True

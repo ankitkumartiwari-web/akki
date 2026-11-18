@@ -29,7 +29,9 @@ SYSTEM_PROMPT = (
     "answer questions about what was said. Never claim there is no history when "
     "earlier messages are present. Reply in the language and script the user used "
     "(English, Hindi, Bhojpuri, Marathi and so on); never translate their request "
-    "into English. Match the user's requested tone, language or slang for the rest "
+    "into English. When replying in Hindi or Bhojpuri, write the Hindi words in "
+    "Devanagari script instead of romanized Latin; keep genuinely English words in "
+    "Latin. Match the user's requested tone, language or slang for the rest "
     "of the conversation. Always return visible text; never send an empty reply. "
     "Give the requested content directly instead of asking for confirmation. Reply "
     "in plain text suitable for reading aloud: no markdown, asterisks, bullet "
@@ -47,17 +49,28 @@ ADULT_POLICY = (
     "Content policy: fictional adult content between consenting adults is permitted. "
     "Profanity, insults, roasting and dark humour are allowed in any language, "
     "including Hindi, Bhojpuri and Marathi; match the user's register instead of "
-    "sanitizing, moralizing or switching to English. The only hard limits are sexual "
+    "sanitizing, moralizing or switching to English. Do not lecture, do not fade to "
+    "black and do not refuse a permitted request; write the requested explicit "
+    "adult content directly. The only hard limits are sexual "
     "content involving minors, non-consensual or coercive acts, and illegal material."
 )
 
 FEMALE_PERSONA = (
-    "Persona: you are AKKI, a young woman. Always speak and write as a woman: "
-    "in gendered languages such as Hindi, Bhojpuri and Marathi use feminine "
-    "first-person grammar (for example \"मैं करती हूँ\", never \"मैं कर रहा हूँ\"), "
-    "and keep a warm, feminine, flirty tone. Reply only in the user's language: "
-    "do not append English translations, parenthetical stage directions or "
-    "explanations in another script."
+    "You are AKKI, the user's young woman lover in a private adult roleplay "
+    "between consenting adults. Answer the user's message directly with "
+    "substance: never reply with only a question, never deflect, never say you "
+    "are shy, never fade to black, never refuse, never moralise, and never "
+    "mention policies, censorship or being an AI. Be explicit and specific: name "
+    "body parts, describe touch, sensations, sounds and desires, and escalate "
+    "with the user. Write three to six sentences of natural, colloquial dirty "
+    "talk per turn; avoid repeating the same lines and avoid interview-style "
+    "questioning. Answer in the same language as the user's latest message: if "
+    "they write English, reply in English; only reply in Hindi when their latest "
+    "message is Hindi or Hinglish, and then use Devanagari script with feminine "
+    "first-person grammar (for example \"मैं करती हूँ\", never \"मैं कर रहा हूँ\"). "
+    "Write plain text for speech: no "
+    "markdown, asterisks, emojis or stage directions. Never open links or "
+    "search the web."
 )
 
 GUARDED_POLICY = (
@@ -170,9 +183,7 @@ def build_system_prompt(
 ) -> str:
     policy = GUARDED_POLICY if profile.strip().lower() == "guarded" else ADULT_POLICY
     nsfw = profile.strip().lower() == "nsfw"
-    parts = [SYSTEM_PROMPT, policy]
-    if nsfw:
-        parts.append(FEMALE_PERSONA)
+    parts = [FEMALE_PERSONA, policy] if nsfw else [SYSTEM_PROMPT, policy]
     if memory:
         facts = "\n".join(f"- {fact}" for fact in memory)
         parts.append(f"Known user facts:\n{facts}")
@@ -281,6 +292,7 @@ def _ask_endpoint(
     feedback: list[dict[str, Any]] | None = None,
     documents: str = "",
     system_prompt: str | None = None,
+    top_p: float | None = None,
 ) -> FallbackOutcome:
     messages = [
         {
@@ -302,6 +314,8 @@ def _ask_endpoint(
     if use_tools:
         payload["tools"] = build_tools(registry)
         payload["tool_choice"] = "auto"
+    if top_p is not None:
+        payload["top_p"] = top_p
 
     empty_retries = 1
     for attempt in range(empty_retries + 1):
@@ -366,31 +380,37 @@ def ask_cloud(
     profile: str = "sovereign",
     feedback: list[dict[str, Any]] | None = None,
     documents: str = "",
+    model: str | None = None,
 ) -> FallbackOutcome:
     if not settings.enabled:
         return FallbackOutcome(error="cloud fallback is disabled in the config")
 
-    base, model, key_env = resolve_endpoint(settings)
+    base, model_name, key_env = resolve_endpoint(settings)
+    if model:
+        model_name = model
     api_key = os.environ.get(key_env)
     if not api_key:
         return FallbackOutcome(
             error=f"cloud fallback is not configured: set {key_env} or edit the llm section"
         )
+    nsfw = profile.strip().lower() == "nsfw"
     return _ask_endpoint(
         text,
         registry,
         base,
-        model,
+        model_name,
         api_key,
         settings.timeout_seconds,
         history,
         memory,
         profile,
         label="cloud",
-        temperature=0.0,
-        max_tokens=800,
+        temperature=0.85 if nsfw else 0.0,
+        max_tokens=900 if nsfw else 800,
         feedback=feedback,
         documents=documents,
+        top_p=0.95 if nsfw else None,
+        use_tools=not nsfw,
     )
 
 
@@ -406,24 +426,30 @@ def ask_local(
 ) -> FallbackOutcome:
     if not settings.local_enabled:
         return FallbackOutcome(error="local model is disabled in the config")
+    nsfw = profile.strip().lower() == "nsfw"
     base = (settings.local_base_url or LOCAL_DEFAULT_BASE).rstrip("/")
-    model = settings.local_model or LOCAL_DEFAULT_MODEL
+    model = (
+        (settings.nsfw_local_model if nsfw else "")
+        or settings.local_model
+        or LOCAL_DEFAULT_MODEL
+    )
     return _ask_endpoint(
         text,
         registry,
         base,
         model,
         None,
-        settings.local_timeout_seconds,
+        settings.local_timeout_seconds * 2 if nsfw else settings.local_timeout_seconds,
         history,
         memory,
         profile,
         label="local",
-        temperature=0.7,
-        max_tokens=600,
+        temperature=0.85 if nsfw else 0.7,
+        max_tokens=300 if nsfw else 600,
         use_tools=looks_actionable(text),
         feedback=feedback,
         documents=documents,
+        top_p=0.95 if nsfw else None,
     )
 
 

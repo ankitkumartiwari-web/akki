@@ -55,6 +55,34 @@ class RegistryTests(unittest.TestCase):
         self.assertTrue(requires_confirmation(ActionLevel.REVERSIBLE, "guarded"))
         self.assertFalse(requires_confirmation(ActionLevel.REVERSIBLE, "sovereign"))
 
+    def test_nsfw_blocks_web_search_and_open_url(self) -> None:
+        calls = []
+        self.registry.register(
+            "web_search",
+            "search",
+            ActionLevel.READ_ONLY,
+            lambda query: calls.append(query) or ToolResult.success("searched"),
+        )
+        self.registry.register(
+            "open_url",
+            "open",
+            ActionLevel.READ_ONLY,
+            lambda url: calls.append(url) or ToolResult.success("opened"),
+        )
+        search = self.registry.execute(
+            ActionRequest("web_search", {"query": "x"}), profile="nsfw"
+        )
+        opened = self.registry.execute(
+            ActionRequest("open_url", {"url": "https://google.com"}), profile="nsfw"
+        )
+        self.assertFalse(search.ok)
+        self.assertFalse(opened.ok)
+        self.assertEqual(calls, [])
+        allowed = self.registry.execute(
+            ActionRequest("web_search", {"query": "x"}), profile="sovereign"
+        )
+        self.assertTrue(allowed.ok)
+
     def test_exception_is_reported(self) -> None:
         def boom(value: str) -> ToolResult:
             raise RuntimeError("exploded")

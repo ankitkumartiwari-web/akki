@@ -30,8 +30,18 @@ PIPER_RELEASE_URL = (
 PIPER_VOICES_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 DEFAULT_PIPER_VOICE = "en_US-lessac-medium"
 STT_INITIAL_PROMPT = (
-    "LeetCode, Two Sum, Three Sum, array, hash map, Python, JavaScript, "
-    "President of India, Prime Minister of India, Vice President of India."
+    "Hey Akki, hi, hello, good morning, thank you, akki change, open Chrome, "
+    "open YouTube, volume up, volume down, mute, take a screenshot, what is the "
+    "time, what is the date, play music, pause, search the web, Hindi, Hinglish, "
+    "India."
+)
+STT_HALLUCINATIONS = (
+    "the content of this video is very good",
+    "thank you for watching",
+    "thanks for watching",
+    "please subscribe",
+    "subtitles by",
+    "amara.org",
 )
 
 _PIPER_VOICE_CACHE: dict[tuple[str, str], Any] = {}
@@ -509,23 +519,34 @@ def transcribe(
     model_size: str = "small",
     language: str = "auto",
 ) -> str:
-    model = _whisper_model(model_size)
     detected: str | None = None
     if model_size.endswith(".en"):
         detected = "en"
     elif language and language.lower() != "auto":
         detected = language
+    if detected == "en" and model_size in {"tiny", "base", "small", "medium"}:
+        model_size = model_size + ".en"
+    model = _whisper_model(model_size)
     segments, _ = model.transcribe(
         str(path),
         language=detected,
-        beam_size=5,
+        beam_size=1,
         vad_filter=True,
+        condition_on_previous_text=False,
         initial_prompt=STT_INITIAL_PROMPT,
     )
     text = " ".join(segment.text.strip() for segment in segments).strip()
-    if not text:
+    if not text or _is_stt_hallucination(text):
         raise VoiceError("could not transcribe any speech")
     return text
+
+
+def _is_stt_hallucination(text: str) -> bool:
+    normalized = " ".join(text.lower().replace("’", "'").split()).strip(" .!?,")
+    return any(
+        normalized == phrase or normalized.startswith(phrase + " ")
+        for phrase in STT_HALLUCINATIONS
+    )
 
 
 def listen(model_size: str = "small", language: str = "auto") -> str:

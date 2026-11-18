@@ -195,6 +195,38 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(fake.calls[0]["language"], "mr")
         self.assertEqual(fake.calls[1]["language"], "en")
 
+    def test_transcribe_prefers_fast_english_model(self) -> None:
+        class FakeModel:
+            def transcribe(self, path, **kwargs):
+                return [SimpleNamespace(text=" ok ")], None
+
+        sizes = []
+
+        def fake_model(size):
+            sizes.append(size)
+            return FakeModel()
+
+        with mock.patch("akki.voice._whisper_model", side_effect=fake_model):
+            voice.transcribe("x.wav", "small", "en")
+            voice.transcribe("x.wav", "small", "mr")
+            voice.transcribe("x.wav", "small", "auto")
+        self.assertEqual(sizes, ["small.en", "small", "small"])
+
+    def test_transcribe_rejects_whisper_hallucinations(self) -> None:
+        class FakeModel:
+            def transcribe(self, path, **kwargs):
+                return [
+                    SimpleNamespace(text=" The content of this video is very good.")
+                ], None
+
+        with mock.patch("akki.voice._whisper_model", return_value=FakeModel()):
+            with self.assertRaises(voice.VoiceError):
+                voice.transcribe("x.wav", "small", "en")
+
+    def test_stt_prompt_biases_short_greetings(self) -> None:
+        self.assertIn("Hey Akki", voice.STT_INITIAL_PROMPT)
+        self.assertIn("hi", voice.STT_INITIAL_PROMPT)
+
     def test_record_without_sounddevice(self) -> None:
         with mock.patch.dict("sys.modules", {"sounddevice": None}):
             with self.assertRaises(voice.VoiceError):

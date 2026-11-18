@@ -46,6 +46,8 @@ class LLMSettings:
     local_enabled: bool = True
     local_first: bool = False
     local_model: str = "richardyoung/fable-qwen2.5-3b-abliterated"
+    nsfw_local_model: str = "richardyoung/llama-3.2-3b-instruct-abliterated:Q4_K_M"
+    nsfw_model: str = ""
     local_base_url: str = "http://127.0.0.1:11434/v1"
     local_timeout_seconds: float = 60.0
 
@@ -61,6 +63,10 @@ class LLMSettings:
             "local_base_url": self.local_base_url,
             "local_timeout_seconds": self.local_timeout_seconds,
         }
+        if self.nsfw_local_model:
+            data["nsfw_local_model"] = self.nsfw_local_model
+        if self.nsfw_model:
+            data["nsfw_model"] = self.nsfw_model
         if self.model:
             data["model"] = self.model
         if self.base_url:
@@ -85,6 +91,10 @@ class LLMSettings:
             local_enabled=bool(data.get("local_enabled", base.local_enabled)),
             local_first=bool(data.get("local_first", base.local_first)),
             local_model=str(data.get("local_model", base.local_model)),
+            nsfw_local_model=str(
+                data.get("nsfw_local_model", base.nsfw_local_model) or ""
+            ),
+            nsfw_model=str(data.get("nsfw_model", base.nsfw_model) or ""),
             local_base_url=str(data.get("local_base_url", base.local_base_url)),
             local_timeout_seconds=float(
                 data.get("local_timeout_seconds", base.local_timeout_seconds)

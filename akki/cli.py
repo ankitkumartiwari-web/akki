@@ -319,7 +319,7 @@ def handle(    text: str,
             if storage is not None and config.llm.cache_ttl_seconds > 0:
                 cache_key = make_cache_key(provider, model, system, history, text)
                 hit = storage.cache_get(cache_key)
-                if hit is not None:
+                if hit is not None and not has_unsupported_script(hit):
                     logger.info("llm cache hit tier=%s model=%s", provider, model)
                     return ToolResult.success(
                         hit, data={"reply": True, "cached": True}
@@ -341,6 +341,14 @@ def handle(    text: str,
                     conversation.record(outcome.request, executed)
                 return executed
             if outcome.text:
+                if has_unsupported_script(outcome.text):
+                    logger.warning(
+                        "llm reply tier=%s model=%s used an unsupported script",
+                        provider,
+                        model,
+                    )
+                    errors.append("model replied in an unsupported script")
+                    return None
                 logger.info(
                     "llm reply tier=%s model=%s text=%r",
                     provider,
@@ -363,12 +371,19 @@ def handle(    text: str,
             return None
 
         _, cloud_model, _ = resolve_endpoint(config.llm)
+        nsfw = config.profile.strip().lower() == "nsfw"
+        nsfw_cloud_model = config.llm.nsfw_model if nsfw else ""
+        local_model = (
+            (config.llm.nsfw_local_model if nsfw else "")
+            or config.llm.local_model
+            or "richardyoung/fable-qwen2.5-3b-abliterated"
+        )
         tiers: list[tuple[str, str, object]] = []
         if config.llm.local_enabled:
             tiers.append(
                 (
                     "ollama",
-                    config.llm.local_model,
+                    local_model,
                     lambda: ask_local(
                         text,
                         registry,
@@ -385,7 +400,7 @@ def handle(    text: str,
             tiers.append(
                 (
                     config.llm.provider,
-                    cloud_model,
+                    nsfw_cloud_model or cloud_model,
                     lambda: ask_cloud(
                         text,
                         registry,
@@ -395,10 +410,14 @@ def handle(    text: str,
                         profile=config.profile,
                         feedback=learned,
                         documents=documents,
+                        model=nsfw_cloud_model or None,
                     ),
                 )
             )
-        if not config.llm.local_first:
+        if nsfw_cloud_model:
+            if not config.llm.local_first:
+                tiers.reverse()
+        elif not (config.llm.local_first or nsfw):
             tiers.reverse()
 
         result = None
@@ -407,14 +426,137 @@ def handle(    text: str,
             if result is not None:
                 break
         if result is None:
-            result = ToolResult.failure(
-                " | ".join(errors) or "no local or cloud model is available"
-            )
+            if errors and all(
+                error == "model replied in an unsupported script"
+                for error in errors
+            ):
+                result = ToolResult.success(
+                    "Sorry, I didn't catch that. Please say it again.",
+                    data={"reply": True},
+                )
+            else:
+                result = ToolResult.failure(
+                    " | ".join(errors) or "no local or cloud model is available"
+                )
 
     logger.info("reply ok=%s verified=%s", result.ok, result.verified)
     conversation.add("user", text)
     conversation.add("assistant", result.message)
     return result
+
+
+UNSUPPORTED_SCRIPT_RANGES = (
+    (0x0370, 0x03FF),
+    (0x0400, 0x04FF),
+    (0x0590, 0x05FF),
+    (0x0E00, 0x0E7F),
+    (0x3040, 0x30FF),
+    (0x4E00, 0x9FFF),
+    (0xAC00, 0xD7AF),
+)
+
+
+def has_unsupported_script(text: str) -> bool:
+    return any(
+        start <= ord(char) <= end
+        for char in text
+        for start, end in UNSUPPORTED_SCRIPT_RANGES
+    )
+
+
+HINDI_LATIN_MARKERS = frozenset(
+    {
+        "hai",
+        "hain",
+        "hoon",
+        "hun",
+        "kya",
+        "nai",
+        "nahi",
+        "nahin",
+        "tum",
+        "tumhe",
+        "tumhara",
+        "tumhare",
+        "tumhari",
+        "tera",
+        "tere",
+        "teri",
+        "mera",
+        "mere",
+        "meri",
+        "mujhe",
+        "tujhe",
+        "aap",
+        "aapko",
+        "aapke",
+        "aapka",
+        "hum",
+        "hume",
+        "hamara",
+        "hamare",
+        "karo",
+        "karna",
+        "karne",
+        "karta",
+        "karti",
+        "chahta",
+        "chahti",
+        "chahiye",
+        "baat",
+        "baatein",
+        "accha",
+        "achha",
+        "theek",
+        "thik",
+        "yaar",
+        "bahut",
+        "bohot",
+        "maza",
+        "mazaa",
+        "dil",
+        "pyaar",
+        "pyar",
+        "abhi",
+        "phir",
+        "lekin",
+        "magar",
+        "kyunki",
+        "kaise",
+        "kaisa",
+        "kaisi",
+        "kitna",
+        "kuch",
+        "sab",
+        "woh",
+        "yeh",
+        "kyun",
+        "kyu",
+        "matlab",
+        "batao",
+        "bata",
+        "suno",
+        "dekho",
+        "jaan",
+        "jaanu",
+        "haan",
+        "mai",
+        "mein",
+    }
+)
+
+
+def is_latin_hindi(text: str) -> bool:
+    tokens = [
+        token.strip(".,!?;:'\"()").lower() for token in text.split()
+    ]
+    tokens = [token for token in tokens if token]
+    if not tokens:
+        return False
+    hits = sum(1 for token in tokens if token in HINDI_LATIN_MARKERS)
+    if hits >= 2:
+        return True
+    return hits == 1 and hits / len(tokens) >= 0.15
 
 
 def _is_devanagari(text: str) -> bool:
@@ -423,7 +565,7 @@ def _is_devanagari(text: str) -> bool:
 
 def speak_text(text: str, config: Config) -> None:
     nsfw = config.profile.strip().lower() == "nsfw"
-    hindi = _is_devanagari(text)
+    hindi = _is_devanagari(text) or is_latin_hindi(text)
     if nsfw:
         edge_voice = (
             config.voice.nsfw_hindi_edge_voice

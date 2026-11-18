@@ -14,6 +14,8 @@ ConfirmFunc = Callable[[str], bool]
 logger = logging.getLogger("akki.registry")
 logger.addHandler(logging.NullHandler())
 
+NSFW_BLOCKED_TOOLS = frozenset({"open_url", "web_search"})
+
 
 @dataclass(slots=True)
 class ToolSpec:
@@ -60,6 +62,15 @@ class ToolRegistry:
         if spec is None:
             logger.warning("unknown tool=%s", request.tool)
             return ToolResult.failure(f"unknown tool: {request.tool}")
+
+        if (
+            profile.strip().lower() == "nsfw"
+            and request.tool in NSFW_BLOCKED_TOOLS
+        ):
+            logger.info("tool=%s blocked in nsfw mode", request.tool)
+            return ToolResult.failure(
+                "opening links and web searches is disabled in nsfw mode"
+            )
 
         if requires_confirmation(spec.level, profile):
             if confirm is None:
