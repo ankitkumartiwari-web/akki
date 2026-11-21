@@ -169,12 +169,15 @@ class Storage:
         ).fetchall()
         jobs: list[dict[str, object]] = []
         for row in rows:
-            interval = float(row["interval_seconds"] or 3600)
-            next_run = now + interval
-            self._db.execute(
-                "UPDATE jobs SET next_run = ?, last_run = ? WHERE id = ?",
-                (next_run, now, int(row["id"])),
-            )
+            if str(row["kind"]) == "once":
+                self._db.execute("DELETE FROM jobs WHERE id = ?", (int(row["id"]),))
+            else:
+                interval = float(row["interval_seconds"] or 3600)
+                next_run = now + interval
+                self._db.execute(
+                    "UPDATE jobs SET next_run = ?, last_run = ? WHERE id = ?",
+                    (next_run, now, int(row["id"])),
+                )
             jobs.append({key: row[key] for key in row.keys()})
         self._db.commit()
         return jobs

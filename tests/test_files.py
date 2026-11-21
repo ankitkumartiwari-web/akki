@@ -4,7 +4,14 @@ from pathlib import Path
 from unittest import mock
 
 from akki.config import Config
-from akki.tools.files import find_files, open_path, search_paths
+from akki.tools.files import (
+    find_files,
+    inspect_path,
+    list_folder,
+    open_path,
+    read_file,
+    search_paths,
+)
 
 
 class FileSearchTests(unittest.TestCase):
@@ -55,6 +62,58 @@ class FileSearchTests(unittest.TestCase):
         self.assertTrue(result.ok)
         startfile.assert_called_once_with(str(target))
         self.assertFalse(result.verified)
+
+    def test_list_folder_includes_details(self) -> None:
+        result = list_folder("Beta", config=self.config)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data["entries"][0]["name"], "readme.md")
+        self.assertEqual(result.data["entries"][0]["type"], "file")
+        self.assertIn("readme.md", result.message)
+        self.assertIn("B", result.message)
+
+    def test_read_file_returns_text_and_metadata(self) -> None:
+        result = read_file("readme", config=self.config)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data["text"], "notes")
+        self.assertEqual(result.data["lines"], 1)
+        self.assertEqual(result.data["name"], "readme.md")
+        self.assertIn("notes", result.message)
+
+    def test_inspect_path_reads_file_and_lists_folder(self) -> None:
+        file_result = inspect_path("main.py", config=self.config)
+        self.assertTrue(file_result.ok)
+        self.assertEqual(file_result.data["text"], "print('hi')")
+        folder_result = inspect_path("Alpha", config=self.config)
+        self.assertTrue(folder_result.ok)
+        self.assertTrue(folder_result.data["entries"])
+
+    def test_list_all_configured_roots(self) -> None:
+        result = list_folder("my files", config=self.config)
+        self.assertTrue(result.ok)
+        names = {entry["name"] for entry in result.data["entries"]}
+        self.assertIn("Alpha", names)
+        self.assertIn("Beta", names)
+
+    def test_recursive_listing_respects_limit(self) -> None:
+        result = list_folder("Alpha", config=self.config, recursive=True, limit=1)
+        self.assertTrue(result.ok)
+        self.assertEqual(len(result.data["entries"]), 1)
+        self.assertTrue(result.data["truncated"])
+
+    def test_desktop_alias_merges_local_and_onedrive_roots(self) -> None:
+        local = self.root / "local" / "Desktop"
+        cloud = self.root / "cloud" / "Desktop"
+        local.mkdir(parents=True)
+        cloud.mkdir(parents=True)
+        (local / "local.txt").write_text("local", encoding="utf-8")
+        (cloud / "cloud.txt").write_text("cloud", encoding="utf-8")
+        config = Config(
+            search_roots=[local, cloud], max_depth=2, timeout_seconds=2.0
+        )
+        result = list_folder("desktop", config=config)
+        self.assertTrue(result.ok)
+        names = {entry["name"] for entry in result.data["entries"]}
+        self.assertEqual(names, {"local.txt", "cloud.txt"})
 
 
 if __name__ == "__main__":

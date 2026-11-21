@@ -9,6 +9,18 @@ from .router import route
 from .storage import Storage
 
 
+def schedule_once(storage: Storage, command: str, seconds: float) -> int:
+    if seconds <= 0:
+        raise ValueError("delay must be positive")
+    return storage.add_job(
+        command=command,
+        kind="once",
+        interval_seconds=None,
+        daily_time=None,
+        next_run=time.time() + float(seconds),
+    )
+
+
 def schedule_every(storage: Storage, command: str, seconds: float) -> int:
     if seconds <= 0:
         raise ValueError("interval must be positive")

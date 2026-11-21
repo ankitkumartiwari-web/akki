@@ -1,0 +1,7 @@
+AKKI since the last X post:
+251 tests (+42)
+21 tools (+6)
+9 file formats (+6)
+Reminders, memory, file/folder inspection, auto STT, and a listening bubble that shows.
+Local-first. Windows. Next: fix the mic.
+#BuildInPublic #LocalAI

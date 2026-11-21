@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import math
 import os
 import queue
@@ -11,6 +12,8 @@ import wave
 from collections.abc import Callable
 from functools import lru_cache
 from typing import Any
+
+logger = logging.getLogger("akki.indicator")
 
 TRANSPARENT = "#010203"
 TRANSPARENT_RGB = (1, 2, 3)
@@ -574,10 +577,11 @@ class ListeningIndicator:
         )
         self._thread.start()
 
-    def show(self, text: str = "listening") -> None:
+    def show(self, text: str = "listening", *, sound: bool = True) -> None:
         if not self._enabled():
             return
-        _play_listen_sound()
+        if sound:
+            _play_listen_sound()
         self.start()
         self._queue.put(("show", text))
 
@@ -595,10 +599,16 @@ class ListeningIndicator:
         try:
             import tkinter as tk
             from PIL import Image, ImageTk
-        except ImportError:
+        except ImportError as exc:
+            logger.warning("listening bubble unavailable: %s", exc)
             return
 
-        root = tk.Tk()
+        try:
+            root = tk.Tk()
+        except Exception:
+            logger.exception("could not create listening bubble window")
+            return
+        logger.info("listening bubble window created")
         root.overrideredirect(True)
         root.attributes("-topmost", True)
         try:
@@ -622,10 +632,13 @@ class ListeningIndicator:
         resample = getattr(Image, "Resampling", Image).LANCZOS
         if self._pil_frames is None:
             self.warm_up()
-        self._frames_ready.wait(timeout=5.0)
+        if not self._frames_ready.wait(timeout=20.0):
+            logger.warning("orb frames not ready after 20s")
         pil_frames = self._pil_frames
         if not pil_frames:
+            logger.error("orb frames unavailable; listening bubble disabled")
             return
+        logger.info("listening bubble frames ready=%d", len(pil_frames))
         frames = [
             _resize_orb_frame(frame, ORB_DISPLAY_SIZE, resample)
             for frame in pil_frames
@@ -655,6 +668,7 @@ class ListeningIndicator:
                     root.deiconify()
                     root.lift()
                     root.attributes("-topmost", True)
+                    logger.info("listening bubble shown")
                 elif command == "hide":
                     self._visible = False
                     root.withdraw()

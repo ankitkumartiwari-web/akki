@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Callable, Iterable
+from xml.etree import ElementTree
 
 from .storage import Storage
 
@@ -27,6 +29,9 @@ SUPPORTED_SUFFIXES = {
     ".htm",
     ".xml",
     ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
 }
 SKIP_DIRS = {
     ".git",
@@ -91,9 +96,100 @@ def _pdf_text(path: Path) -> str:
     return "\n".join(pages)
 
 
+def _docx_text(path: Path) -> str:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            payload = archive.read("word/document.xml")
+    except (KeyError, OSError, zipfile.BadZipFile) as exc:
+        raise KnowledgeError(f"could not read {path}: {exc}") from exc
+    root = ElementTree.fromstring(payload)
+    namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    paragraphs: list[str] = []
+    for paragraph in root.iter(f"{namespace}p"):
+        text = "".join(node.text or "" for node in paragraph.iter(f"{namespace}t"))
+        if text.strip():
+            paragraphs.append(text.strip())
+    return "\n".join(paragraphs)
+
+
+def _xlsx_text(path: Path) -> str:
+    main = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    try:
+        with zipfile.ZipFile(path) as archive:
+            shared: list[str] = []
+            if "xl/sharedStrings.xml" in archive.namelist():
+                root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+                for item in root.iter(f"{main}si"):
+                    shared.append(
+                        "".join(node.text or "" for node in item.iter(f"{main}t"))
+                    )
+            sheets = sorted(
+                name for name in archive.namelist()
+                if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name)
+            )
+            parts: list[str] = []
+            for number, name in enumerate(sheets, 1):
+                root = ElementTree.fromstring(archive.read(name))
+                rows: list[str] = []
+                for row in root.iter(f"{main}row"):
+                    values: list[str] = []
+                    for cell in row.iter(f"{main}c"):
+                        kind = cell.get("t")
+                        node = cell.find(f"{main}v")
+                        if kind == "inlineStr":
+                            inline = cell.find(f"{main}is")
+                            value = "".join(
+                                text.text or "" for text in inline.iter(f"{main}t")
+                            ) if inline is not None else ""
+                        elif kind == "s" and node is not None and node.text:
+                            index = int(node.text)
+                            value = shared[index] if 0 <= index < len(shared) else ""
+                        else:
+                            value = node.text if node is not None and node.text else ""
+                        if value:
+                            values.append(value)
+                    if values:
+                        rows.append("\t".join(values))
+                if rows:
+                    parts.append(f"[Sheet {number}]\n" + "\n".join(rows))
+    except (KeyError, OSError, ValueError, zipfile.BadZipFile) as exc:
+        raise KnowledgeError(f"could not read {path}: {exc}") from exc
+    return "\n\n".join(parts)
+
+
+def _pptx_text(path: Path) -> str:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            slides = sorted(
+                name for name in archive.namelist()
+                if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)
+            )
+            if not slides:
+                raise KnowledgeError(f"no slides found in {path}")
+            parts: list[str] = []
+            for name in slides:
+                root = ElementTree.fromstring(archive.read(name))
+                text = " ".join(
+                    node.text or "" for node in root.iter()
+                    if node.tag.endswith("}t")
+                )
+                if text.strip():
+                    parts.append(" ".join(text.split()))
+    except (KeyError, OSError, zipfile.BadZipFile) as exc:
+        raise KnowledgeError(f"could not read {path}: {exc}") from exc
+    return "\n".join(parts)
+
+
 def extract_text(path: Path) -> str:
-    if path.suffix.lower() == ".pdf":
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
         return _pdf_text(path)
+    if suffix == ".docx":
+        return _docx_text(path)
+    if suffix == ".pptx":
+        return _pptx_text(path)
+    if suffix == ".xlsx":
+        return _xlsx_text(path)
     try:
         raw = path.read_text(encoding="utf-8", errors="ignore")
     except OSError as exc:

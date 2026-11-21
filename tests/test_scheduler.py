@@ -37,6 +37,13 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(len(due), 1)
         self.assertEqual(due[0]["command"], "open notepad")
 
+    def test_one_shot_job_is_removed_after_running(self) -> None:
+        scheduler.schedule_once(self.storage, "__reminder__: drink water", 1)
+        due = scheduler.due_jobs(self.storage, time.time() + 2)
+        self.assertEqual(len(due), 1)
+        self.assertEqual(due[0]["command"], "__reminder__: drink water")
+        self.assertEqual(scheduler.due_jobs(self.storage, time.time() + 10), [])
+
 
 if __name__ == "__main__":
     unittest.main()

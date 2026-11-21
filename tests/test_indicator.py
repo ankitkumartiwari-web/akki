@@ -173,6 +173,15 @@ class IndicatorTests(unittest.TestCase):
         start.assert_called_once()
         play.assert_called_once()
 
+    def test_show_can_skip_the_listen_sound(self) -> None:
+        listening = indicator.ListeningIndicator(enabled=lambda: True)
+        with mock.patch.object(listening, "start") as start, mock.patch(
+            "akki.indicator._play_listen_sound"
+        ) as play:
+            listening.show("thinking", sound=False)
+        start.assert_called_once()
+        play.assert_not_called()
+
     def test_show_does_nothing_when_disabled(self) -> None:
         listening = indicator.ListeningIndicator(enabled=lambda: False)
         with mock.patch.object(listening, "start") as start, mock.patch(

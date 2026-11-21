@@ -111,6 +111,26 @@ class LLMTests(unittest.TestCase):
         self.assertEqual(kwargs["temperature"], 0.85)
         self.assertEqual(kwargs["top_p"], 0.95)
 
+    def test_nsfw_prompt_anchors_english_for_english_input(self) -> None:
+        prompt = build_system_prompt(
+            profile="nsfw", user_text="Insult me and talk dirty."
+        )
+        self.assertIn("reply in English only", prompt)
+
+    def test_nsfw_prompt_anchors_hindi_for_hinglish_input(self) -> None:
+        prompt = build_system_prompt(
+            profile="nsfw", user_text="Mujhe gaali do aur batao kya karna hai."
+        )
+        self.assertIn("reply in Hindi", prompt)
+
+    def test_language_hint_is_nsfw_only(self) -> None:
+        self.assertNotIn(
+            "reply in English only",
+            build_system_prompt(
+                profile="sovereign", user_text="Insult me and talk dirty."
+            ),
+        )
+
     def test_ask_cloud_model_override(self) -> None:
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "k"}):
             with mock.patch(

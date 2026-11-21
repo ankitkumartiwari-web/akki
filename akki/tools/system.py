@@ -28,9 +28,15 @@ Add-Type -MemberDefinition $signature -Name Keyboard -Namespace AKKI
 """
 
 
-def _run_powershell(script: str, timeout: float = 20.0) -> subprocess.CompletedProcess[str]:
+def _run_powershell(
+    script: str,
+    timeout: float = 20.0,
+    *,
+    stdin: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        ["powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", script],
+        input=stdin,
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -73,22 +79,21 @@ def change_volume(direction: str, steps: int = 2) -> ToolResult:
 
 
 def lock_screen() -> ToolResult:
+    import ctypes
+
     try:
-        completed = subprocess.run(
-            ["rundll32.exe", "user32.dll,LockWorkStation"],
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        if not user32.LockWorkStation():
+            code = ctypes.get_last_error()
+            detail = f" (WinError {code})" if code else ""
+            return ToolResult.failure(f"could not lock screen{detail}")
+    except (AttributeError, OSError) as exc:
         return ToolResult.failure(f"could not lock screen: {exc}")
-    if completed.returncode != 0:
-        return ToolResult.failure("could not lock screen")
     return ToolResult.success("Locked the Windows screen", verified=True)
 
 
 def clipboard_read() -> ToolResult:
-    script = "[System.Windows.Forms.Clipboard]::GetText()"
+    script = "Get-Clipboard -Raw"
     try:
         completed = _run_powershell(script, timeout=10)
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -108,10 +113,9 @@ def clipboard_write(text: str) -> ToolResult:
     cleaned = text.strip()
     if not cleaned:
         return ToolResult.failure("clipboard text cannot be empty")
-    escaped = cleaned.replace("'", "''")
-    script = f"[System.Windows.Forms.Clipboard]::SetText('{escaped}')"
+    script = "$text = [Console]::In.ReadToEnd(); Set-Clipboard -Value $text"
     try:
-        completed = _run_powershell(script, timeout=10)
+        completed = _run_powershell(script, timeout=10, stdin=cleaned)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return ToolResult.failure(f"could not write clipboard: {exc}")
     if completed.returncode != 0:

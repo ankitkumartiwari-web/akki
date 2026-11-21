@@ -26,9 +26,12 @@ from .facts import lookup_officeholder
 from . import scheduler
 from . import speaker
 from . import vision
+from .reminders import format_duration, parse_reminder
 from .llm import ask_cloud, ask_local, build_system_prompt, resolve_endpoint
 from .logsetup import configure_logging, log_path
 from .mcp import MCPManager
+from .language import is_devanagari as _is_devanagari
+from .language import is_latin_hindi
 from .models import ActionLevel, ActionRequest, ToolResult
 from .panel import SettingsPanel
 from .permissions import ask_confirmation
@@ -57,20 +60,27 @@ from .voice import (
 )
 
 logger = logging.getLogger("akki.cli")
+from .tools.files import resolve_targets
 from .tools import (
+    announce_reminder,
     capture_camera,
     change_volume,
     clipboard_read,
     clipboard_write,
+    compose_message,
     detect_faces,
     find_files,
+    inspect_path,
     launch_app,
     list_apps,
+    list_folder,
     lock_screen,
     open_in_app,
     open_path,
     open_url,
+    read_file,
     read_url,
+    remember_fact,
     take_screenshot,
     web_search,
 )
@@ -78,7 +88,7 @@ from .tools import (
 BANNER = "AKKI {version} - local-first assistant. Type :help for commands."
 
 
-def build_registry(config: Config) -> ToolRegistry:
+def build_registry(config: Config, storage: Storage | None = None) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
         "launch_app",
@@ -139,7 +149,7 @@ def build_registry(config: Config) -> ToolRegistry:
     registry.register(
         "lock_screen",
         "Lock the Windows screen",
-        ActionLevel.SENSITIVE,
+        ActionLevel.REVERSIBLE,
         lock_screen,
         {},
     )
@@ -158,6 +168,13 @@ def build_registry(config: Config) -> ToolRegistry:
         {"text": "text to copy"},
     )
     registry.register(
+        "compose_message",
+        "Copy a dictated message to the clipboard and save a draft",
+        ActionLevel.REVERSIBLE,
+        compose_message,
+        {"text": "message text"},
+    )
+    registry.register(
         "open_path",
         "Open a file or folder with its default handler",
         ActionLevel.REVERSIBLE,
@@ -170,6 +187,55 @@ def build_registry(config: Config) -> ToolRegistry:
         ActionLevel.READ_ONLY,
         partial(find_files, config=config),
         {"query": "name fragment"},
+    )
+    registry.register(
+        "list_folder",
+        "List files and folders with sizes and modified dates",
+        ActionLevel.READ_ONLY,
+        partial(list_folder, config=config),
+        {
+            "target": "file, folder, or alias such as desktop",
+            "recursive": {
+                "type": "boolean",
+                "description": "include nested files",
+                "optional": True,
+            },
+        },
+    )
+    registry.register(
+        "read_file",
+        "Read the text contents and metadata of a local file",
+        ActionLevel.READ_ONLY,
+        partial(read_file, config=config),
+        {"target": "file name or path"},
+    )
+    registry.register(
+        "inspect_path",
+        "Read a file or list a folder, whichever the target is",
+        ActionLevel.READ_ONLY,
+        partial(inspect_path, config=config),
+        {
+            "target": "file or folder",
+            "recursive": {
+                "type": "boolean",
+                "description": "include nested files",
+                "optional": True,
+            },
+        },
+    )
+    registry.register(
+        "remember_fact",
+        "Store an important fact in long-term memory",
+        ActionLevel.REVERSIBLE,
+        partial(remember_fact, storage=storage),
+        {"fact": "fact or detail to remember"},
+    )
+    registry.register(
+        "reminder",
+        "Speak a due reminder aloud",
+        ActionLevel.READ_ONLY,
+        partial(announce_reminder, config=config),
+        {"text": "reminder text"},
     )
     registry.register(
         "screenshot",
@@ -256,6 +322,21 @@ def handle(    text: str,
         conversation.add("user", text)
         conversation.add("assistant", message)
         return ToolResult.success(message, data={"reply": True})
+    reminder = parse_reminder(text)
+    if reminder is not None:
+        if storage is None:
+            return ToolResult.failure("Reminders need local storage.")
+        seconds, reminder_text = reminder
+        job_id = scheduler.schedule_once(
+            storage, f"__reminder__: {reminder_text}", seconds
+        )
+        message = f"Reminder set for {format_duration(seconds)}: {reminder_text}"
+        logger.info("reminder scheduled job=%s seconds=%s", job_id, seconds)
+        conversation.add("user", text)
+        conversation.add("assistant", message)
+        return ToolResult.success(
+            message, data={"job_id": job_id, "seconds": seconds}
+        )
     step_texts = planner.split_steps(text)
     if len(step_texts) > 1:
         requests = planner.plan_steps(text, config)
@@ -305,7 +386,7 @@ def handle(    text: str,
         )
         history = conversation.cloud_messages()
         system = build_system_prompt(
-            memory, config.profile, learned, documents
+            memory, config.profile, learned, documents, text
         )
         errors: list[str] = []
 
@@ -464,105 +545,6 @@ def has_unsupported_script(text: str) -> bool:
     )
 
 
-HINDI_LATIN_MARKERS = frozenset(
-    {
-        "hai",
-        "hain",
-        "hoon",
-        "hun",
-        "kya",
-        "nai",
-        "nahi",
-        "nahin",
-        "tum",
-        "tumhe",
-        "tumhara",
-        "tumhare",
-        "tumhari",
-        "tera",
-        "tere",
-        "teri",
-        "mera",
-        "mere",
-        "meri",
-        "mujhe",
-        "tujhe",
-        "aap",
-        "aapko",
-        "aapke",
-        "aapka",
-        "hum",
-        "hume",
-        "hamara",
-        "hamare",
-        "karo",
-        "karna",
-        "karne",
-        "karta",
-        "karti",
-        "chahta",
-        "chahti",
-        "chahiye",
-        "baat",
-        "baatein",
-        "accha",
-        "achha",
-        "theek",
-        "thik",
-        "yaar",
-        "bahut",
-        "bohot",
-        "maza",
-        "mazaa",
-        "dil",
-        "pyaar",
-        "pyar",
-        "abhi",
-        "phir",
-        "lekin",
-        "magar",
-        "kyunki",
-        "kaise",
-        "kaisa",
-        "kaisi",
-        "kitna",
-        "kuch",
-        "sab",
-        "woh",
-        "yeh",
-        "kyun",
-        "kyu",
-        "matlab",
-        "batao",
-        "bata",
-        "suno",
-        "dekho",
-        "jaan",
-        "jaanu",
-        "haan",
-        "mai",
-        "mein",
-    }
-)
-
-
-def is_latin_hindi(text: str) -> bool:
-    tokens = [
-        token.strip(".,!?;:'\"()").lower() for token in text.split()
-    ]
-    tokens = [token for token in tokens if token]
-    if not tokens:
-        return False
-    hits = sum(1 for token in tokens if token in HINDI_LATIN_MARKERS)
-    if hits >= 2:
-        return True
-    return hits == 1 and hits / len(tokens) >= 0.15
-
-
-def _is_devanagari(text: str) -> bool:
-    return any("\u0900" <= char <= "\u097F" for char in text)
-
-
 def speak_text(text: str, config: Config) -> None:
     nsfw = config.profile.strip().lower() == "nsfw"
     hindi = _is_devanagari(text) or is_latin_hindi(text)
@@ -624,8 +606,12 @@ def print_help() -> None:
     print("  open <project> in <app>    open a file or folder in an app")
     print("  search <terms>             web search")
     print("  find <name>                search configured folders")
+    print("  read file <name>           read a local file's text and metadata")
+    print("  list files on <folder>     list files with sizes and dates")
+    print("  lock screen                lock Windows")
     print("  take a screenshot          save a screen capture")
     print("  increase/decrease volume   change volume")
+    print("  remind me in 10 minutes to <task>   set a spoken reminder")
     print("  :tools                     list registered tools")
     print("  :apps [search]             list installed Start Menu and Store apps")
     print("  :alerts                    show mobile alert settings")
@@ -653,6 +639,8 @@ def print_help() -> None:
     print("  :cache                     show response cache stats")
     print("  :cache clear               drop all cached responses")
     print("  :listen                    record a voice command (Enter to stop)")
+    print("  :message [text]            copy a message and save a draft")
+    print("  :dictate                   record one message, copy it, and save a draft")
     print("  :hotkey                    show the push-to-talk hotkey state")
     print("  :hotkey on|off             enable Ctrl+Space push-to-talk")
     print("  :wake                    show the wake-word state")
@@ -676,7 +664,10 @@ def print_help() -> None:
     print("  :stt model <name>          switch whisper model, e.g. small")
     print("  :stt language <code|auto>  force recognition language")
     print("  :logs                      show the audit log path")
-    print("  :index [path]              index documents for local RAG")
+    print("  :index [path|desktop|all]  index documents for local RAG")
+    print("  :ls [folder]               list a folder (default: desktop)")
+    print("  :file <file>               read a local file and show details")
+    print("  :inspect <file|folder>     read a file or list a folder")
     print("  :docs                      list indexed documents")
     print("  :docs forget <id|path>     remove an indexed document")
     print("  :docs clear                clear the document index")
@@ -768,6 +759,20 @@ def repl(
         enabled=lambda: config.desktop.bubble_enabled
     )
     indicator.warm_up()
+
+    def respond_visible(text: str) -> None:
+        indicator.show("thinking", sound=False)
+        try:
+            respond(
+                text,
+                config=config,
+                registry=registry,
+                conversation=conversation,
+                storage=storage,
+            )
+        finally:
+            indicator.hide()
+
     web_conversation = Conversation()
     web_lock = threading.Lock()
 
@@ -964,7 +969,7 @@ def repl(
                     say_goodbye()
                     break
                 try:
-                    respond(transcript, config, registry, conversation, storage)
+                    respond_visible(transcript)
                 except Exception as exc:
                     logger.exception("conversation respond failed")
                     print(f"\r[mic] respond failed: {exc}", flush=True)
@@ -1345,7 +1350,7 @@ def repl(
                 if text in {":quit", ":exit", ":q"}:
                     break
                 print(f"[mic] heard: {text}")
-                respond(text, config, registry, conversation, storage)
+                respond_visible(text)
                 start_conversation()
         except KeyboardInterrupt:
             pass
@@ -1365,7 +1370,7 @@ def repl(
                     continue
                 if text in {":quit", ":exit", ":q"}:
                     break
-                respond(text, config, registry, conversation, storage)
+                respond_visible(text)
                 start_conversation()
         except KeyboardInterrupt:
             pass
@@ -1572,11 +1577,16 @@ def repl(
                 print("document indexing needs the database")
                 continue
             raw_target = text[len(":index") :].strip()
-            targets = (
-                [Path(raw_target).expanduser()]
-                if raw_target
-                else list(config.search_roots)
-            )
+            if raw_target:
+                key = raw_target.lower()
+                if key in {"all", "everything"} or key in {
+                    "desktop", "documents", "downloads", "projects", "code", "dev"
+                }:
+                    targets = resolve_targets(key, config)
+                else:
+                    targets = [Path(raw_target).expanduser()]
+            else:
+                targets = list(config.search_roots)
             total_indexed = 0
             total_skipped = 0
             for target in targets:
@@ -1628,6 +1638,36 @@ def repl(
                 continue
             removed = knowledge.clear_documents(storage)
             print(f"cleared {removed} document(s)")
+            continue
+        if text == ":ls" or text.startswith(":ls "):
+            raw_target = text[len(":ls") :].strip() or "desktop"
+            result = registry.execute(
+                ActionRequest("list_folder", {"target": raw_target}, text),
+                profile=config.profile,
+            )
+            print(describe(result))
+            continue
+        if text.startswith(":file "):
+            target = text[len(":file ") :].strip()
+            if not target:
+                print("usage: :file <file>")
+                continue
+            result = registry.execute(
+                ActionRequest("read_file", {"target": target}, text),
+                profile=config.profile,
+            )
+            print(describe(result))
+            continue
+        if text.startswith(":inspect "):
+            target = text[len(":inspect ") :].strip()
+            if not target:
+                print("usage: :inspect <file|folder>")
+                continue
+            result = registry.execute(
+                ActionRequest("inspect_path", {"target": target}, text),
+                profile=config.profile,
+            )
+            print(describe(result))
             continue
         if text.startswith(":searchdocs "):
             if storage is None:
@@ -2177,6 +2217,30 @@ def repl(
                 except VoiceError as exc:
                     print(f"voice: {exc}")
             continue
+        if text == ":message" or text == ":dictate":
+            indicator.show()
+            try:
+                transcript = listen(
+                    config.voice.stt_model, config.voice.stt_language
+                )
+            except VoiceError as exc:
+                print(f"voice: {exc}")
+                continue
+            finally:
+                indicator.hide()
+            if not transcript.strip():
+                print("no speech detected")
+                continue
+            print(f"you said: {transcript}")
+            print(describe(compose_message(transcript)))
+            continue
+        if text.startswith(":message ") or text.startswith(":dictate "):
+            message_text = text.split(" ", 1)[1].strip()
+            if not message_text:
+                print("usage: :message <text>")
+                continue
+            print(describe(compose_message(message_text)))
+            continue
         if text == ":listen":
             indicator.show()
             try:
@@ -2192,7 +2256,7 @@ def repl(
             if is_farewell(transcript):
                 say_goodbye()
                 continue
-            respond(transcript, config, registry, conversation, storage)
+            respond_visible(transcript)
             start_conversation()
             continue
         if text.startswith(":remember "):
@@ -2261,7 +2325,7 @@ def repl(
         if via_voice and is_farewell(text):
             say_goodbye()
             continue
-        respond(text, config, registry, conversation, storage)
+        respond_visible(text)
         if via_voice:
             start_conversation()
 
@@ -2331,7 +2395,14 @@ def main(argv: list[str] | None = None) -> int:
     except (SecretError, OSError) as exc:
         print(f"warning: stored secrets unavailable: {exc}", file=sys.stderr)
 
-    registry = build_registry(config)
+    storage: Storage | None = None
+    if not args.no_db:
+        try:
+            storage = Storage(config.db_path)
+        except (sqlite3.Error, OSError) as exc:
+            print(f"warning: database unavailable: {exc}", file=sys.stderr)
+
+    registry = build_registry(config, storage)
 
     if args.tools:
         for spec in registry.specs():
@@ -2349,13 +2420,6 @@ def main(argv: list[str] | None = None) -> int:
             name="akki-tts-prewarm",
             daemon=True,
         ).start()
-
-    storage: Storage | None = None
-    if not args.no_db:
-        try:
-            storage = Storage(config.db_path)
-        except (sqlite3.Error, OSError) as exc:
-            print(f"warning: database unavailable: {exc}", file=sys.stderr)
 
     try:
         if args.command:

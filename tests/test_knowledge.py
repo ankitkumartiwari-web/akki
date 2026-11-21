@@ -49,6 +49,50 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(knowledge.clear_documents(self.storage), 1)
         self.assertEqual(knowledge.list_documents(self.storage), [])
 
+    def test_docx_and_pptx_text_is_extracted(self) -> None:
+        import zipfile
+
+        docx = self.root / "notes.docx"
+        with zipfile.ZipFile(docx, "w") as archive:
+            archive.writestr(
+                "word/document.xml",
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/'
+                'wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Hello</w:t>'
+                "</w:r></w:p><w:p><w:r><w:t>World</w:t></w:r></w:p></w:body>"
+                "</w:document>",
+            )
+        self.assertEqual(knowledge.extract_text(docx), "Hello\nWorld")
+
+        pptx = self.root / "deck.pptx"
+        with zipfile.ZipFile(pptx, "w") as archive:
+            archive.writestr(
+                "ppt/slides/slide1.xml",
+                '<p:sld xmlns:p="http://schemas.openxmlformats.org/'
+                'presentationml/2006/main" xmlns:a="http://schemas.openxmlformats'
+                'org/drawingml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody>'
+                "<a:p><a:r><a:t>Slide title</a:t></a:r></a:p></p:txBody></p:sp>"
+                "</p:spTree></p:cSld></p:sld>",
+            )
+        self.assertEqual(knowledge.extract_text(pptx), "Slide title")
+
+        xlsx = self.root / "book.xlsx"
+        with zipfile.ZipFile(xlsx, "w") as archive:
+            archive.writestr(
+                "xl/sharedStrings.xml",
+                '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/'
+                '2006/main"><si><t>Name</t></si><si><t>AKKI</t></si></sst>',
+            )
+            archive.writestr(
+                "xl/worksheets/sheet1.xml",
+                '<worksheet xmlns="http://schemas.openxmlformats.org/'
+                'spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" '
+                't="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row><row r="2">'
+                '<c r="A2"><v>42</v></c></row></sheetData></worksheet>',
+            )
+        self.assertEqual(
+            knowledge.extract_text(xlsx), "[Sheet 1]\nName\tAKKI\n42"
+        )
+
     def test_html_is_stripped(self) -> None:
         doc = self.root / "page.html"
         doc.write_text(

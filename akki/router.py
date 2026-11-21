@@ -11,6 +11,41 @@ DOMAIN_PATTERN = re.compile(
     r"^[\w.-]+\.(?:com|org|net|io|dev|ai|co|in|edu|gov|app)(?:/.*)?$", re.IGNORECASE
 )
 URL_PATTERN = re.compile(r"^(?:https?://|www\.)", re.IGNORECASE)
+FOLDER_ALIASES = {
+    "desktop",
+    "documents",
+    "downloads",
+    "projects",
+    "code",
+    "dev",
+    "all",
+    "all files",
+    "everything",
+    "my files",
+}
+
+
+def _is_lock_request(text: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"(?:(?:mera|meri|my|the|apna)\s+)?"
+            r"(?:(?:screen|computer|pc|laptop|स्क्रीन|कंप्यूटर|लैपटॉप)\s+)?"
+            r"(?:ko\s+)?(?:lock|लॉक)"
+            r"(?:\s+(?:the\s+|my\s+|mera\s+|meri\s+|apna\s+)?"
+            r"(?:screen|computer|pc|laptop|स्क्रीन|कंप्यूटर|लैपटॉप))?"
+            r"(?:\s+(?:karo|kar\s*do|kardo|kar|करो|कर\s*दो))?",
+            text,
+        )
+    )
+
+
+def _fileish(value: str) -> bool:
+    low = value.strip().lower()
+    if low in FOLDER_ALIASES:
+        return True
+    if _looks_like_path(value):
+        return True
+    return bool(re.search(r"\.[a-z0-9]{1,6}$", low))
 
 
 def _squash(text: str) -> str:
@@ -40,6 +75,11 @@ def route(text: str, config: Config | None = None) -> ActionRequest | None:
     if not cleaned:
         return None
     lowered = cleaned.lower().rstrip(".?!")
+
+    if lowered.startswith("__reminder__:"):
+        return ActionRequest(
+            "reminder", {"text": cleaned.split(":", 1)[1].strip()}, raw
+        )
 
     if re.fullmatch(r"(?:take |grab )?(?:a )?screenshot(?: of (?:the )?screen)?", lowered) or re.fullmatch(
         r"(?:capture|grab) (?:the )?screen", lowered
@@ -99,8 +139,154 @@ def route(text: str, config: Config | None = None) -> ActionRequest | None:
     if match:
         return ActionRequest("read_url", {"url": match.group(1)}, raw)
 
-    if re.fullmatch(r"lock(?:\s+(?:my|the|computer|screen|my screen|the screen|my computer|the computer))?", lowered):
+    if _is_lock_request(lowered):
         return ActionRequest("lock_screen", {}, raw)
+
+    match = re.fullmatch(
+        r"(?:compose|dictate|copy|draft|write|type)\s+(?:a\s+|this\s+)?"
+        r"(?:message|msg)\s*[:,-]?\s*(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("compose_message", {"text": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:message|msg)\s*[:,-]\s*(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("compose_message", {"text": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:message|msg)\s+(.+?)\s+(?:likho|likh do|banao|bana do)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("compose_message", {"text": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:extract|pull|get|fetch)\s+(?:all\s+)?(?:the\s+)?"
+        r"(?:info|information|details|summary)\s+(?:from|of|in)\s+"
+        r"(?:the\s+)?(?:folder|directory)\s+(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("inspect_path", {"target": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:remember|note)\s+(?:that\s+)?(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("remember_fact", {"fact": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:yaad\s+rakho|yaad\s+rakhna)\s*[:,]?\s*(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("remember_fact", {"fact": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:store|save|keep)\s+(?:this\s+|that\s+|the\s+)?"
+        r"(?:important\s+)?(?:info(?:rmation)?|details?|fact|note|message)?"
+        r"\s*(?:in|to)\s+(?:my\s+)?memory"
+        r"(?:\s+for\s+(?:the\s+)?remainder)?\s*[:,-]?\s*(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("remember_fact", {"fact": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:read|open|show|fetch|get|display|summari[sz]e)\s+"
+        r"(?:the\s+)?(?:file|document)\s+(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("read_file", {"target": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:read|open|show|fetch|get|display|give me)\s+(?:all\s+)?(?:the\s+)?"
+        r"(?:contents?|details?)\s+(?:of|from|in)\s+(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("inspect_path", {"target": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:list|show|scan|fetch|get)\s+(?:all\s+)?(?:the\s+)?"
+        r"(?:files?|folders?|entries)\s+(?:in|on|of|from)\s+(?:my\s+)?(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        recursive = bool(re.search(r"\b(?:all|recursive|everything)\b", cleaned, re.IGNORECASE))
+        return ActionRequest(
+            "list_folder",
+            {"target": match.group(1).strip(), "recursive": recursive},
+            raw,
+        )
+
+    match = re.fullmatch(
+        r"(?:what(?:'s| is)|list|show|scan)\s+(?:in|on|inside)\s+(?:my\s+)?(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match and _fileish(match.group(1).strip()):
+        return ActionRequest("inspect_path", {"target": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:list|show|scan)\s+(?:my\s+)?"
+        r"(desktop|documents|downloads|projects|code|dev)(?:\s+(?:folder|files))?",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("list_folder", {"target": match.group(1)}, raw)
+
+    match = re.fullmatch(
+        r"(?:list|show|scan|fetch|get)\s+(?:all\s+)?(?:my\s+)?"
+        r"(?:files|folders|everything)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        recursive = bool(re.search(r"\b(?:all|everything)\b", cleaned, re.IGNORECASE))
+        return ActionRequest("list_folder", {"target": "all", "recursive": recursive}, raw)
+
+    match = re.fullmatch(
+        r"(desktop|documents|downloads|projects|code|dev)\s+(?:ki|ke)\s+"
+        r"(?:files?|folders?)\s+(?:batao|dikhao|list karo)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("list_folder", {"target": match.group(1)}, raw)
+
+    match = re.fullmatch(
+        r"(.+?)\s+(?:file|फाइल|फ़ाइल)\s+(?:padho|padh do|read karo|kholo|dikhao)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("read_file", {"target": match.group(1).strip()}, raw)
+
+    match = re.fullmatch(
+        r"(?:file|फाइल|फ़ाइल)\s+(.+?)\s+(?:padho|padh do|read karo|kholo|dikhao|details batao)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        return ActionRequest("read_file", {"target": match.group(1).strip()}, raw)
     if lowered == "clipboard" or lowered.startswith("clipboard get") or lowered.startswith("clipboard read"):
         return ActionRequest("clipboard_read", {}, raw)
     parts = cleaned.split(" ", 2)
@@ -116,6 +302,21 @@ def route(text: str, config: Config | None = None) -> ActionRequest | None:
         target = _site(_strip_article(match.group(1)))
         if target:
             return ActionRequest("open_url", {"url": target}, raw)
+
+    match = re.fullmatch(
+        r"(?:open|launch|start|show)\s+(?:the\s+)?folder\s+(.+)",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if match:
+        target = _strip_article(match.group(1)).strip()
+        if config is not None and target.lower() in FOLDER_ALIASES:
+            from .tools.files import resolve_target
+
+            resolved = resolve_target(target, config)
+            if resolved is not None:
+                target = str(resolved)
+        return ActionRequest("open_path", {"path": target}, raw)
 
     match = re.fullmatch(r"(?:open|launch|start|run) (.+)", cleaned, re.IGNORECASE)
     if match:

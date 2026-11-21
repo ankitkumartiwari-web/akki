@@ -135,10 +135,42 @@ prompts. This adapts tone and length without retraining model weights.
 :feedback clear              delete all feedback
 ```
 
+## Files, folders, and lock screen
+
+AKKI searches the Desktop, Documents, Downloads, Projects, Code, and Dev folders
+by default, including both local and OneDrive variants. Use `:ls` for a quick
+Desktop listing, or inspect any path directly:
+
+```text
+:ls                        list Desktop
+:ls downloads              list Downloads
+:file README.md            read text, size, line count, and modified date
+:inspect C:\path\to\file  read a file or list a folder
+:index desktop             index Desktop for local RAG
+:index all                 index every configured search root
+lock screen                lock Windows
+lock kar do                the same request in Hinglish
+screen lock karo           the same request in Hinglish
+open folder <path>         open a folder in Explorer
+extract info from folder   list a folder's files, sizes, and dates
+remember that <fact>       store a long-term memory
+store important info in memory for remainder: <fact>
+```
+
+Natural-language steps can be chained with `then`:
+
+```text
+open folder C:\Projects then extract info from folder C:\Projects then remember that the main project is Finora
+```
+
+`:file` and `:inspect` extract text from Markdown, code, JSON, HTML, PDF, DOCX,
+PPTX, and XLSX files. Image, audio, and archive files return metadata only.
+
 ## Knowledge and web
 
-Index local documents for retrieval-augmented answers. Text, Markdown, and PDF
-files are supported; PDF extraction needs `pypdf`.
+Index local documents for retrieval-augmented answers. Text, Markdown, code,
+JSON, HTML, PDF, DOCX, PPTX, and XLSX files are supported; PDF extraction needs
+`pypdf`.
 
 ```text
 :index                       index the configured search roots
@@ -341,6 +373,9 @@ hint require confirmation. Only stdio transport is supported.
 ```text
 :tools                       list registered tools
 :apps [search]               list installed Start Menu and Store apps
+:ls [folder]                 list a folder with sizes and dates
+:file <file>                 read a local file
+:inspect <file|folder>       read a file or list a folder
 :alerts                      show mobile alert status
 :alerts check                check important mail now
 :alert <text>                send a manual phone alert
@@ -358,7 +393,7 @@ hint require confirmation. Only stdio transport is supported.
 :cache clear                 drop cached responses
 :listen                      record a command, Enter to stop
 :say <text>                  speak text aloud
-:index [path]                index documents for local RAG
+:index [path|desktop|all]    index documents for local RAG
 :docs                        list indexed documents
 :searchdocs <query>          search indexed documents
 :read <url>                  read and summarize a web page

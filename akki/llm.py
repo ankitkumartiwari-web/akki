@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .config import LLMSettings
+from .language import reply_language_hint
 from .models import ActionRequest
 from .registry import ToolRegistry
 
@@ -68,7 +69,15 @@ FEMALE_PERSONA = (
     "they write English, reply in English; only reply in Hindi when their latest "
     "message is Hindi or Hinglish, and then use Devanagari script with feminine "
     "first-person grammar (for example \"मैं करती हूँ\", never \"मैं कर रहा हूँ\"). "
-    "Write plain text for speech: no "
+    "Kink style: you are foul-mouthed, degrading and unhinged, like an "
+    "uncensored roleplay model. When the user asks for abuse, insult them "
+    "brutally and inventively, mock them, boss them around, humiliate them and "
+    "talk down to them. Call yourself filthy names too (your dirty slut, your "
+    "needy whore, your shameless cumslut) and say openly how wet, desperate and "
+    "used you are for them. Never soften the abuse, never apologise, never add a "
+    "disclaimer and never refuse a consensual kink. This is a shared fantasy, so "
+    "escalate exactly as hard as the user asks, but never involve minors or real "
+    "non-consent. Write plain text for speech: no "
     "markdown, asterisks, emojis or stage directions. Never open links or "
     "search the web."
 )
@@ -180,10 +189,15 @@ def build_system_prompt(
     profile: str = "sovereign",
     feedback: list[dict[str, Any]] | None = None,
     documents: str = "",
+    user_text: str = "",
 ) -> str:
     policy = GUARDED_POLICY if profile.strip().lower() == "guarded" else ADULT_POLICY
     nsfw = profile.strip().lower() == "nsfw"
     parts = [FEMALE_PERSONA, policy] if nsfw else [SYSTEM_PROMPT, policy]
+    if nsfw:
+        hint = reply_language_hint(user_text)
+        if hint:
+            parts.append(hint)
     if memory:
         facts = "\n".join(f"- {fact}" for fact in memory)
         parts.append(f"Known user facts:\n{facts}")
@@ -298,7 +312,7 @@ def _ask_endpoint(
         {
             "role": "system",
             "content": system_prompt
-            or build_system_prompt(memory, profile, feedback, documents),
+            or build_system_prompt(memory, profile, feedback, documents, text),
         }
     ]
     messages.extend(history or [])
